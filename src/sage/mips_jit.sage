@@ -69,7 +69,4 @@ class MipsJIT:
             self.blocks[idx]["hits"] = self.blocks[idx]["hits"] + 1
 
     proc stats(self):
-        let cache_size = 0
-        let keys = dict_keys(self.cache)
-        cache_size = len(keys)
-        return cache_size, len(self.blocks)
+        return len(self.blocks)

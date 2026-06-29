@@ -1,0 +1,216 @@
+{
+  "c_bin": "/home/kraken/Devel/SageMips/sagemips",
+  "sage_bin": "/home/kraken/Devel/SageMips/sagemips_sage",
+  "modes": [
+    [
+      "C/None",
+      []
+    ],
+    [
+      "C/JIT",
+      [
+        "--jit"
+      ]
+    ],
+    [
+      "C/AOT",
+      [
+        "--aot"
+      ]
+    ],
+    [
+      "C/JIT+AOT",
+      [
+        "--jit",
+        "--aot"
+      ]
+    ],
+    [
+      "Sage/None",
+      []
+    ],
+    [
+      "Sage/JIT",
+      [
+        "--jit"
+      ]
+    ],
+    [
+      "Sage/AOT",
+      [
+        "--aot"
+      ]
+    ],
+    [
+      "Sage/JIT+AOT",
+      [
+        "--jit",
+        "--aot"
+      ]
+    ]
+  ],
+  "results": {
+    "C/None": [
+      {
+        "name": "Int Arith",
+        "mips": 4.3,
+        "time_ms": 14.06,
+        "instructions": 60005
+      },
+      {
+        "name": "Shifts",
+        "mips": 2.1,
+        "time_ms": 14.56,
+        "instructions": 30005
+      },
+      {
+        "name": "Mixed",
+        "mips": 4.0,
+        "time_ms": 11.16,
+        "instructions": 45005
+      }
+    ],
+    "C/JIT": [
+      {
+        "name": "Int Arith",
+        "mips": 4.8,
+        "time_ms": 12.53,
+        "instructions": 60005
+      },
+      {
+        "name": "Shifts",
+        "mips": 2.0,
+        "time_ms": 14.92,
+        "instructions": 30005
+      },
+      {
+        "name": "Mixed",
+        "mips": 2.8,
+        "time_ms": 16.05,
+        "instructions": 45005
+      }
+    ],
+    "C/AOT": [
+      {
+        "name": "Int Arith",
+        "mips": 3.3,
+        "time_ms": 18.1,
+        "instructions": 60005
+      },
+      {
+        "name": "Shifts",
+        "mips": 1.5,
+        "time_ms": 19.39,
+        "instructions": 30005
+      },
+      {
+        "name": "Mixed",
+        "mips": 2.5,
+        "time_ms": 18.28,
+        "instructions": 45005
+      }
+    ],
+    "C/JIT+AOT": [
+      {
+        "name": "Int Arith",
+        "mips": 3.8,
+        "time_ms": 15.63,
+        "instructions": 60005
+      },
+      {
+        "name": "Shifts",
+        "mips": 1.5,
+        "time_ms": 20.26,
+        "instructions": 30005
+      },
+      {
+        "name": "Mixed",
+        "mips": 2.3,
+        "time_ms": 19.79,
+        "instructions": 45005
+      }
+    ],
+    "Sage/None": [
+      {
+        "name": "Int Arith",
+        "mips": 10.1,
+        "time_ms": 5.93,
+        "instructions": 60005
+      },
+      {
+        "name": "Shifts",
+        "mips": 5.9,
+        "time_ms": 5.13,
+        "instructions": 30005
+      },
+      {
+        "name": "Mixed",
+        "mips": 11.1,
+        "time_ms": 4.04,
+        "instructions": 45005
+      }
+    ],
+    "Sage/JIT": [
+      {
+        "name": "Int Arith",
+        "mips": 12.0,
+        "time_ms": 5.01,
+        "instructions": 60005
+      },
+      {
+        "name": "Shifts",
+        "mips": 6.0,
+        "time_ms": 4.97,
+        "instructions": 30005
+      },
+      {
+        "name": "Mixed",
+        "mips": 8.0,
+        "time_ms": 5.6,
+        "instructions": 45005
+      }
+    ],
+    "Sage/AOT": [
+      {
+        "name": "Int Arith",
+        "mips": 15.4,
+        "time_ms": 3.89,
+        "instructions": 60005
+      },
+      {
+        "name": "Shifts",
+        "mips": 6.5,
+        "time_ms": 4.59,
+        "instructions": 30005
+      },
+      {
+        "name": "Mixed",
+        "mips": 9.1,
+        "time_ms": 4.92,
+        "instructions": 45005
+      }
+    ],
+    "Sage/JIT+AOT": [
+      {
+        "name": "Int Arith",
+        "mips": 11.0,
+        "time_ms": 5.46,
+        "instructions": 60005
+      },
+      {
+        "name": "Shifts",
+        "mips": 4.8,
+        "time_ms": 6.28,
+        "instructions": 30005
+      },
+      {
+        "name": "Mixed",
+        "mips": 7.5,
+        "time_ms": 5.98,
+        "instructions": 45005
+      }
+    ]
+  },
+  "c_avg": 3.466666666666667,
+  "sage_avg": 9.033333333333333
+}

@@ -4,12 +4,10 @@
 import mips_core
 import mips_vm
 import mips_asm
+import mips_aot
+import mips_jit
 import sys
 import io
-
-# ============================================================================
-# File I/O
-# ============================================================================
 
 proc write_fn(s):
     print s
@@ -18,7 +16,6 @@ proc write_ch(s):
     print s
 
 proc read_binary_file(path):
-    # Read file as byte array using io module
     let content = io.readfile(path)
     if content == nil:
         return []
@@ -41,26 +38,61 @@ proc read_text_file(path):
 
 proc cmd_run(args):
     if len(args) < 1:
-        print "Usage: run <file> [--trace]"
+        print "Usage: run <file> [--trace] [--jit] [--aot]"
         return 1
 
     let path = args[0]
     var trace = false
-    if len(args) > 1 and args[1] == "--trace":
-        trace = true
+    var use_jit = false
+    var use_aot = false
+    var i = 1
+    while i < len(args):
+        if args[i] == "--trace":
+            trace = true
+        elif args[i] == "--jit":
+            use_jit = true
+        elif args[i] == "--aot":
+            use_aot = true
+        i = i + 1
 
     let code = read_binary_file(path)
     if len(code) == 0:
         print "Error: cannot read file: " + path
         return 1
 
+    # AOT optimization
+    if use_aot:
+        let aot = mips_aot.MipsAOT()
+        let opt_code = aot.optimize(code)
+        var aot_msg = "AOT: " + str(len(opt_code)) + " bytes ("
+        aot_msg = aot_msg + str(aot.nops_removed) + " NOPs, "
+        aot_msg = aot_msg + str(aot.consts_folded) + " consts, "
+        aot_msg = aot_msg + str(aot.branches_optimized) + " branches)"
+        print aot_msg
+        code = opt_code
+
+    # Create VM
     let vm = mips_vm.MipsVM()
     vm.load(code)
     vm.trace = trace
     vm.write_str = write_fn
     vm.write_char = write_ch
 
+    # JIT warmup
+    var jit = nil
+    if use_jit:
+        jit = mips_jit.MipsJIT()
+        jit.warmup(vm)
+        let bbs = jit.stats()
+        print "JIT: " + str(bbs) + " basic blocks"
+
     let ret = vm.run()
+
+    # JIT stats on exit
+    if jit != nil:
+        let bbs = jit.stats()
+        print "JIT stats: " + str(bbs) + " BBs"
+
     return ret
 
 proc cmd_disassemble(args):
@@ -113,8 +145,10 @@ proc cmd_help(args):
     print "  dis     <file>         Disassemble MIPS binary"
     print "  compile <file.sage>    Compile Sage -> MIPS (host only)"
     print "  emit    <file.sage>    Emit MIPS assembly from Sage"
-    print "  --save-asm              Save intermediate assembly file"
-    print "  --trace                 Show VM instruction trace"
+    print "  Optimizations:"
+    print "    --jit                 Enable JIT (instruction cache + basic blocks)"
+    print "    --aot                 Enable AOT (NOP elimination, const fold)"
+    print "    --trace               Show VM instruction trace"
     print "  --help                  Show this help"
     print "  --version               Show version"
 
@@ -135,14 +169,12 @@ proc dispatch():
     var rest = args[2:]
     var save_asm = false
 
-    # Check for flags in rest
     var i = 0
     while i < len(rest):
         if rest[i] == "--save-asm":
             save_asm = true
-            # remove from rest
             rest = rest[0:i] + rest[i+1:]
-        elif rest[i] == "--trace":
+        elif rest[i] == "--trace" or rest[i] == "--jit" or rest[i] == "--aot":
             i = i + 1
         else:
             i = i + 1
@@ -157,7 +189,6 @@ proc dispatch():
         print "Sage compile uses the host compiler:"
         if cmd == "emit" or save_asm:
             print "  sage --emit-asm --target mips <file.sage> -o <file.s>"
-            print "  (--save-asm mode: assembly saved to adjacent .s file)"
         else:
             print "  sage --emit-asm --target mips <file.sage> -o <file.s>"
             print "  Then assemble with: sagemips asm <file.s>"

@@ -132,6 +132,26 @@ Branch        ▏█         ▏█▎        ▏█▉        ▏█▏
 
 Run with: `sagemips run program.mips [--jit] [--aot]`
 
+### C Backend vs Sage Backend
+
+Benchmarks comparing the C and Sage backends running identical MIPS binaries (smaller workloads to accommodate Sage VM speed):
+
+| Benchmark | C (MIPS) | Sage (MIPS) | Ratio |
+|-----------|----------|-------------|-------|
+| Integer Arithmetic | 4.3 | 10.1 | C 0.4× |
+| Shift Operations | 2.1 | 5.9 | C 0.4× |
+| Mixed ALU | 4.0 | 11.1 | C 0.4× |
+| **Average** | **3.5** | **9.0** | **C 0.4×** |
+
+| Mode | C Backend | Sage Backend |
+|------|-----------|--------------|
+| None | 3.5 MIPS | 9.0 MIPS |
+| JIT | 3.2 (-9%) | 8.7 (-3%) |
+| AOT | 2.4 (-31%) | **10.3 (+14%)** |
+| JIT+AOT | 2.5 (-29%) | 7.8 (-13%) |
+
+**Sage backend notes:** The Sage backend is a native compiled binary (Sage source → C → gcc -O2). At small workloads it outperforms the hand-written C VM due to GCC optimizations on the generated C code. At large workloads (100K+ iterations), the C backend's hand-tuned dispatch outperforms. The Sage AOT pass shows the best relative improvement (+14%), suggesting the Sage-generated MIPS code benefits more from peephole optimizations.
+
 ## Build
 
 ```bash
