@@ -1,0 +1,236 @@
+{
+  "modes": [
+    [
+      "None",
+      []
+    ],
+    [
+      "JIT",
+      [
+        "--jit"
+      ]
+    ],
+    [
+      "AOT",
+      [
+        "--aot"
+      ]
+    ],
+    [
+      "JIT+AOT",
+      [
+        "--jit",
+        "--aot"
+      ]
+    ]
+  ],
+  "benchmarks": {
+    "None": [
+      {
+        "name": "Integer Arithmetic",
+        "iterations": 100000,
+        "instructions": 1200005,
+        "time_ms": 6.96,
+        "mips": 172.37,
+        "ns_per_instr": 5.8
+      },
+      {
+        "name": "Branch Heavy",
+        "iterations": 50000,
+        "instructions": 150005,
+        "time_ms": 7.54,
+        "mips": 19.9,
+        "ns_per_instr": 50.3
+      },
+      {
+        "name": "Memory R/W",
+        "iterations": 50000,
+        "instructions": 700005,
+        "time_ms": 8.98,
+        "mips": 77.92,
+        "ns_per_instr": 12.8
+      },
+      {
+        "name": "Multiply Heavy",
+        "iterations": 50000,
+        "instructions": 500005,
+        "time_ms": 7.95,
+        "mips": 62.86,
+        "ns_per_instr": 15.9
+      },
+      {
+        "name": "Shift Operations",
+        "iterations": 100000,
+        "instructions": 1200005,
+        "time_ms": 7.97,
+        "mips": 150.49,
+        "ns_per_instr": 6.6
+      },
+      {
+        "name": "Mixed ALU",
+        "iterations": 100000,
+        "instructions": 1500005,
+        "time_ms": 7.0,
+        "mips": 214.2,
+        "ns_per_instr": 4.7
+      }
+    ],
+    "JIT": [
+      {
+        "name": "Integer Arithmetic",
+        "iterations": 100000,
+        "instructions": 1200005,
+        "time_ms": 7.02,
+        "mips": 170.91,
+        "ns_per_instr": 5.9
+      },
+      {
+        "name": "Branch Heavy",
+        "iterations": 50000,
+        "instructions": 150005,
+        "time_ms": 6.0,
+        "mips": 25.02,
+        "ns_per_instr": 40.0
+      },
+      {
+        "name": "Memory R/W",
+        "iterations": 50000,
+        "instructions": 700005,
+        "time_ms": 6.01,
+        "mips": 116.45,
+        "ns_per_instr": 8.6
+      },
+      {
+        "name": "Multiply Heavy",
+        "iterations": 50000,
+        "instructions": 500005,
+        "time_ms": 3.64,
+        "mips": 137.54,
+        "ns_per_instr": 7.3
+      },
+      {
+        "name": "Shift Operations",
+        "iterations": 100000,
+        "instructions": 1200005,
+        "time_ms": 4.95,
+        "mips": 242.47,
+        "ns_per_instr": 4.1
+      },
+      {
+        "name": "Mixed ALU",
+        "iterations": 100000,
+        "instructions": 1500005,
+        "time_ms": 11.53,
+        "mips": 130.12,
+        "ns_per_instr": 7.7
+      }
+    ],
+    "AOT": [
+      {
+        "name": "Integer Arithmetic",
+        "iterations": 100000,
+        "instructions": 1200005,
+        "time_ms": 8.53,
+        "mips": 140.65,
+        "ns_per_instr": 7.1
+      },
+      {
+        "name": "Branch Heavy",
+        "iterations": 50000,
+        "instructions": 150005,
+        "time_ms": 3.9,
+        "mips": 38.48,
+        "ns_per_instr": 26.0
+      },
+      {
+        "name": "Memory R/W",
+        "iterations": 50000,
+        "instructions": 700005,
+        "time_ms": 6.29,
+        "mips": 111.33,
+        "ns_per_instr": 9.0
+      },
+      {
+        "name": "Multiply Heavy",
+        "iterations": 50000,
+        "instructions": 500005,
+        "time_ms": 5.35,
+        "mips": 93.51,
+        "ns_per_instr": 10.7
+      },
+      {
+        "name": "Shift Operations",
+        "iterations": 100000,
+        "instructions": 1200005,
+        "time_ms": 8.02,
+        "mips": 149.55,
+        "ns_per_instr": 6.7
+      },
+      {
+        "name": "Mixed ALU",
+        "iterations": 100000,
+        "instructions": 1500005,
+        "time_ms": 7.0,
+        "mips": 214.43,
+        "ns_per_instr": 4.7
+      }
+    ],
+    "JIT+AOT": [
+      {
+        "name": "Integer Arithmetic",
+        "iterations": 100000,
+        "instructions": 1200005,
+        "time_ms": 8.01,
+        "mips": 149.81,
+        "ns_per_instr": 6.7
+      },
+      {
+        "name": "Branch Heavy",
+        "iterations": 50000,
+        "instructions": 150005,
+        "time_ms": 6.96,
+        "mips": 21.55,
+        "ns_per_instr": 46.4
+      },
+      {
+        "name": "Memory R/W",
+        "iterations": 50000,
+        "instructions": 700005,
+        "time_ms": 5.96,
+        "mips": 117.36,
+        "ns_per_instr": 8.5
+      },
+      {
+        "name": "Multiply Heavy",
+        "iterations": 50000,
+        "instructions": 500005,
+        "time_ms": 6.03,
+        "mips": 82.94,
+        "ns_per_instr": 12.1
+      },
+      {
+        "name": "Shift Operations",
+        "iterations": 100000,
+        "instructions": 1200005,
+        "time_ms": 8.99,
+        "mips": 133.45,
+        "ns_per_instr": 7.5
+      },
+      {
+        "name": "Mixed ALU",
+        "iterations": 100000,
+        "instructions": 1500005,
+        "time_ms": 8.01,
+        "mips": 187.37,
+        "ns_per_instr": 5.3
+      }
+    ],
+    "None_avg": 116.3,
+    "JIT_avg": 137.1,
+    "AOT_avg": 124.7,
+    "JIT+AOT_avg": 115.4,
+    "JIT_speedup": 17.9,
+    "AOT_speedup": 7.2,
+    "JIT+AOT_speedup": -0.8
+  }
+}

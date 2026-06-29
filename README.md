@@ -89,38 +89,48 @@ make sage
 
 ## Performance
 
-Benchmarks from the C backend on a single core, hosted Linux x86-64. Results in **millions of instructions per second (MIPS)**:
+Benchmarks from the C backend on a single core, hosted Linux x86-64. Results in **millions of instructions per second (MIPS)**, comparing all four optimization modes:
+
+### Optimization Mode Comparison
 
 ```
-MIXED ALU  █████████████████████████████████████████ 281
-SHIFT OPS  █████████████████████████████████████████ 309
-INT ARITH  ███████████████████████████████████       239
-MEM R/W    ███████████████████████▌                  140
-MULTIPLY   ██████████████▍                            96
-NESTED LP  ███████████                                73
-BRANCHES   ████▌                                      30
-DIVISION   ████                                       27
-FIBONACCI  █                                           7
-PRIME SIEVE ▌                                          0.3
-            └────┬────┴────┬────┴────┬────┴────┬────┘
-            0   80   160  240  320  400
-                       Million Instructions/sec
+MODE         Mixed ALU  ShiftOps  IntArith  Mem R/W  Multiply  Branch   AVG
+───          ─────────  ────────  ────────  ───────  ────────  ──────   ────
+None         214        151       172       78       63        20        116
+JIT          130        243       171       117      138       25        137  +18%
+AOT          214        150       141       111      94        39        125  +7%
+JIT+AOT      187        133       150       117      83        22        115  -1%
 ```
 
-| Benchmark | Time | MIPS | Instructions |
-|-----------|------|------|-------------|
-| Shift Operations (6 × 100K) | 3.9ms | **309** | 1,200,005 |
-| Mixed ALU (10 ops × 100K) | 5.3ms | **282** | 1,500,005 |
-| Integer Arithmetic (7 × 100K) | 5.0ms | **239** | 1,200,005 |
-| Memory Read/Write (8 × 50K) | 5.0ms | **140** | 700,005 |
-| Multiply (5 × 50K) | 5.2ms | **96** | 500,005 |
-| Nested Loops (200×200) | 11.0ms | **73** | 800,005 |
-| Branch (3 × 50K) | 5.1ms | **30** | 150,005 |
-| Division (2 × 20K) | 9.0ms | **27** | 240,005 |
-| Fibonacci (5000 terms) | 6.0ms | **7** | 40,005 |
-| Prime Counting (n ≤ 500) | 5.0ms | **0.3** | 1,505 |
+```
+Benchmark     ▏  None    ▏  JIT     ▏  AOT     ▏  JIT+AOT
+──────────────▏──────────▏──────────▏──────────▏──────────
+Mixed ALU     ▏██████████▏██████    ▏█████████▌▏████████▌
+Shift Ops     ▏███████   ▏██████████▏███████▏  ▏██████▎
+Int Arith     ▏████████▎ ▏████████▏ ▏██████▊   ▏███████▏
+Mem R/W       ▏███▊      ▏█████▋    ▏█████▍    ▏█████▋
+Multiply      ▏███       ▏██████▊   ▏████▋     ▏████
+Branch        ▏█         ▏█▎        ▏█▉        ▏█▏
+```
 
-**Aggregate:** 6.3M instructions in 60.5ms = **120 average MIPS**, peaking at **309 MIPS** on shift ops
+| Benchmark | None | JIT | AOT | JIT+AOT |
+|-----------|------|-----|-----|---------|
+| Mixed ALU | 214 | 130 | 214 | 187 |
+| Shift Operations | 151 | **243** | 150 | 133 |
+| Integer Arithmetic | 172 | 171 | 141 | 150 |
+| Memory R/W | 78 | 117 | 111 | **117** |
+| Multiply Heavy | 63 | **138** | 94 | 83 |
+| Branch Heavy | 20 | 25 | **39** | 22 |
+| **Average** | **116** | **137** | **125** | **115** |
+| **vs Baseline** | — | **+18%** | **+7%** | -1% |
+
+**Key findings:**
+- **JIT** wins overall (+18%): instruction cache eliminates re-decoding, Multiply sees 2.2× speedup
+- **AOT** helps branches (+7%): branch-to-jump conversion and NOP elimination reduce dispatch overhead
+- **JIT+AOT**: combined warmup overhead negates gains for short runs; best for long-running programs
+- **Best per benchmark**: Shift Ops/JIT (243), Mixed ALU/AOT (214), Multiply/JIT (138), Branch/AOT (39)
+
+Run with: `sagemips run program.mips [--jit] [--aot]`
 
 ## Build
 
