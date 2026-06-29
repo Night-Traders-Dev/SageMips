@@ -127,13 +127,17 @@ static void vm_write_char_cb(char c) {
 static void usage(const char* prog) {
     print_str("SageMips - MIPS32 VM + Assembler + Compiler\n");
     print_str("Usage:\n");
-    print_str("  "); print_str(prog); print_str(" run    <file>       Run MIPS binary (.mips/.bin)\n");
-    print_str("  "); print_str(prog); print_str(" asm    <file.s>     Assemble MIPS assembly to binary\n");
-    print_str("  "); print_str(prog); print_str(" dis    <file>       Disassemble MIPS binary\n");
-    print_str("  "); print_str(prog); print_str(" compile <file.sage>  Compile Sage to MIPS and run\n");
-    print_str("  "); print_str(prog); print_str(" cc     <file.c>     Compile C to MIPS and run\n");
-    print_str("  "); print_str(prog); print_str(" --help              Show this help\n");
-    print_str("  "); print_str(prog); print_str(" --version           Show version\n");
+    print_str("  "); print_str(prog); print_str(" run     <file>          Run MIPS binary (.mips/.bin)\n");
+    print_str("  "); print_str(prog); print_str(" asm     <file.s> [out]   Assemble MIPS assembly to binary\n");
+    print_str("  "); print_str(prog); print_str(" dis     <file>          Disassemble MIPS binary\n");
+    print_str("  "); print_str(prog); print_str(" compile <file.sage>      Compile Sage -> MIPS binary\n");
+    print_str("  "); print_str(prog); print_str(" emit    <file.sage>      Emit MIPS assembly from Sage (no binary)\n");
+    print_str("  "); print_str(prog); print_str(" cc      <file.c>         Compile C -> MIPS binary\n");
+    print_str("  Flags:\n");
+    print_str("    --save-asm            Save intermediate MIPS assembly (.s file)\n");
+    print_str("    --trace               Show VM instruction trace with run\n");
+    print_str("  "); print_str(prog); print_str(" --help                 Show this help\n");
+    print_str("  "); print_str(prog); print_str(" --version              Show version\n");
 }
 
 // ============================================================================
@@ -294,53 +298,120 @@ static int cmd_assemble(const char* input, const char* output) {
 #endif
 }
 
-static int cmd_compile_sage(const char* input) {
+static int cmd_compile_sage(const char* input, int save_asm) {
 #ifndef SAGE_BARE_METAL
-    char tmp_asm[256] = "/tmp/sagemips_tmp.s";
+    char out_buf[256];
+    const char* base = input;
+    const char* ext = strrchr(base, '.');
+    int base_len = ext ? (int)(ext - base) : (int)strlen(base);
+
+    // Build output paths
+    memcpy(out_buf, base, base_len);
+    if (save_asm) {
+        // Use local .s file instead of /tmp
+        memcpy(out_buf + base_len, ".s", 3);
+    } else {
+        // Temporary file in /tmp
+        memcpy(out_buf, "/tmp/sagemips_asm_", 18);
+        // Append a short hash of the input path
+        const char* bn = base;
+        const char* sl = strrchr(bn, '/');
+        if (sl) bn = sl + 1;
+        memcpy(out_buf + 18, bn, base_len - (bn - base));
+        memcpy(out_buf + 18 + (base_len - (bn - base)), ".s", 3);
+        out_buf[18 + (base_len - (bn - base)) + 3] = '\0';
+        goto emit_asm;
+    }
+    out_buf[base_len + 2] = '\0';
+
+emit_asm:
     char cmd[512];
     snprintf(cmd, sizeof(cmd),
              "sage --emit-asm \"%s\" --target mips -o \"%s\" 2>&1",
-             input, tmp_asm);
+             input, out_buf);
     print_str("Compiling Sage -> MIPS asm...\n");
     int ret = system(cmd);
     if (ret != 0) {
         print_str("Error: sage compilation failed\n");
         return 1;
     }
+    print_str("  Assembly saved: ");
+    print_str(out_buf);
+    print_str("\n");
+
+    if (save_asm) {
+        // Stop here — user only wanted assembly
+        return 0;
+    }
+
     print_str("Assembling MIPS -> binary...\n");
-    return cmd_assemble(tmp_asm, NULL);
+    return cmd_assemble(out_buf, NULL);
 #else
-    (void)input;
+    (void)input; (void)save_asm;
     return 1;
 #endif
 }
 
-static int cmd_compile_c(const char* input) {
+static int cmd_compile_c(const char* input, int save_asm) {
 #ifndef SAGE_BARE_METAL
     char out_buf[256];
+    char asm_buf[256];
     const char* base = input;
     const char* ext = strrchr(base, '.');
     int base_len = ext ? (int)(ext - base) : (int)strlen(base);
     memcpy(out_buf, base, base_len);
     memcpy(out_buf + base_len, ".mips", 6);
+    memcpy(asm_buf, base, base_len);
+    memcpy(asm_buf + base_len, ".s", 3);
+    asm_buf[base_len + 2] = '\0';
 
-    char cmd[512];
-    snprintf(cmd, sizeof(cmd),
-             "mips-linux-gnu-gcc -static -nostdlib -march=mips32 \"%s\" -o \"%s\" 2>&1",
-             input, out_buf);
-    print_str("Compiling C -> MIPS...\n");
-    int ret = system(cmd);
-    if (ret != 0) {
-        print_str("Error: C compilation failed (is a MIPS cross-compiler installed?)\n");
-        print_str("Install: apt install gcc-mips-linux-gnu\n");
-        return 1;
+    if (save_asm) {
+        // Generate MIPS assembly first
+        char cmd[512];
+        snprintf(cmd, sizeof(cmd),
+                 "mips-linux-gnu-gcc -S -nostdlib -march=mips32 \"%s\" -o \"%s\" 2>&1",
+                 input, asm_buf);
+        print_str("Compiling C -> MIPS asm...\n");
+        int ret = system(cmd);
+        if (ret == 0) {
+            print_str("  Assembly saved: ");
+            print_str(asm_buf);
+            print_str("\n");
+
+            // Now assemble the .s to .mips
+            print_str("Assembling MIPS -> binary...\n");
+            ret = cmd_assemble(asm_buf, out_buf);
+            if (ret == 0) {
+                print_str("  Binary saved: ");
+                print_str(out_buf);
+                print_str("\n");
+            }
+            return ret;
+        } else {
+            print_str("Error: C compilation failed (is a MIPS cross-compiler installed?)\n");
+            print_str("Install: apt install gcc-mips-linux-gnu\n");
+            return 1;
+        }
+    } else {
+        // Direct binary compilation
+        char cmd[512];
+        snprintf(cmd, sizeof(cmd),
+                 "mips-linux-gnu-gcc -static -nostdlib -march=mips32 \"%s\" -o \"%s\" 2>&1",
+                 input, out_buf);
+        print_str("Compiling C -> MIPS...\n");
+        int ret = system(cmd);
+        if (ret != 0) {
+            print_str("Error: C compilation failed (is a MIPS cross-compiler installed?)\n");
+            print_str("Install: apt install gcc-mips-linux-gnu\n");
+            return 1;
+        }
+        print_str("Compiled: ");
+        print_str(out_buf);
+        print_str("\n");
+        return 0;
     }
-    print_str("Compiled: ");
-    print_str(out_buf);
-    print_str("\n");
-    return 0;
 #else
-    (void)input;
+    (void)input; (void)save_asm;
     return 1;
 #endif
 }
@@ -368,8 +439,9 @@ int main(int argc, char** argv) {
         return 0;
     }
     if (strcmp(cmd, "run") == 0) {
-        if (argc < 3) { print_str("Usage: "); print_str(prog); print_str(" run <file>\n"); return 1; }
-        int trace = (argc > 3 && strcmp(argv[3], "--trace") == 0);
+        if (argc < 3) { print_str("Usage: "); print_str(prog); print_str(" run <file> [--trace]\n"); return 1; }
+        int trace = 0;
+        if (argc > 3 && strcmp(argv[3], "--trace") == 0) trace = 1;
         return cmd_run(argv[2], trace);
     }
     if (strcmp(cmd, "dis") == 0 || strcmp(cmd, "disasm") == 0) {
@@ -380,13 +452,18 @@ int main(int argc, char** argv) {
         if (argc < 3) { print_str("Usage: "); print_str(prog); print_str(" asm <file.s> [output]\n"); return 1; }
         return cmd_assemble(argv[2], argc > 3 ? argv[3] : NULL);
     }
-    if (strcmp(cmd, "compile") == 0) {
+    if (strcmp(cmd, "compile") == 0 || strcmp(cmd, "emit") == 0) {
         if (argc < 3) { print_str("Usage: "); print_str(prog); print_str(" compile <file.sage>\n"); return 1; }
-        return cmd_compile_sage(argv[2]);
+        int save_asm = 0;
+        // 'emit' always saves assembly; 'compile' needs --save-asm
+        if (strcmp(cmd, "emit") == 0) save_asm = 1;
+        if (argc > 3 && strcmp(argv[3], "--save-asm") == 0) save_asm = 1;
+        return cmd_compile_sage(argv[2], save_asm);
     }
     if (strcmp(cmd, "cc") == 0) {
-        if (argc < 3) { print_str("Usage: "); print_str(prog); print_str(" cc <file.c>\n"); return 1; }
-        return cmd_compile_c(argv[2]);
+        if (argc < 3) { print_str("Usage: "); print_str(prog); print_str(" cc <file.c> [--save-asm]\n"); return 1; }
+        int save_asm = (argc > 3 && strcmp(argv[3], "--save-asm") == 0);
+        return cmd_compile_c(argv[2], save_asm);
     }
 
     print_str("Unknown command: ");

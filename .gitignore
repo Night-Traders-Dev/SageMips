@@ -30,3 +30,4 @@ deps/SageVM/
 *~
 *.swp
 *.swo
+sagemips_sage

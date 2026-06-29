@@ -108,12 +108,15 @@ proc cmd_help(args):
     print "SageMips (Sage) - MIPS32 VM + Assembler"
     print ""
     print "Commands:"
-    print "  run    <file>       Run MIPS binary"
-    print "  asm    <file.s>     Assemble MIPS assembly"
-    print "  dis    <file>       Disassemble MIPS binary"
-    print "  compile <file.sage>  Compile Sage -> MIPS (host only)"
-    print "  --help              Show this help"
-    print "  --version           Show version"
+    print "  run     <file>         Run MIPS binary"
+    print "  asm     <file.s>       Assemble MIPS assembly"
+    print "  dis     <file>         Disassemble MIPS binary"
+    print "  compile <file.sage>    Compile Sage -> MIPS (host only)"
+    print "  emit    <file.sage>    Emit MIPS assembly from Sage"
+    print "  --save-asm              Save intermediate assembly file"
+    print "  --trace                 Show VM instruction trace"
+    print "  --help                  Show this help"
+    print "  --version               Show version"
 
 proc cmd_version(args):
     print "SageMips (Sage) v1.0.0"
@@ -129,7 +132,20 @@ proc dispatch():
         return 1
 
     let cmd = args[1]
-    let rest = args[2:]
+    var rest = args[2:]
+    var save_asm = false
+
+    # Check for flags in rest
+    var i = 0
+    while i < len(rest):
+        if rest[i] == "--save-asm":
+            save_asm = true
+            # remove from rest
+            rest = rest[0:i] + rest[i+1:]
+        elif rest[i] == "--trace":
+            i = i + 1
+        else:
+            i = i + 1
 
     if cmd == "run":
         return cmd_run(rest)
@@ -137,9 +153,14 @@ proc dispatch():
         return cmd_assemble(rest)
     elif cmd == "dis" or cmd == "disasm":
         return cmd_disasm(rest)
-    elif cmd == "compile":
+    elif cmd == "compile" or cmd == "emit":
         print "Sage compile uses the host compiler:"
-        print "  sage --emit-asm --target mips <file.sage> -o <file.s>"
+        if cmd == "emit" or save_asm:
+            print "  sage --emit-asm --target mips <file.sage> -o <file.s>"
+            print "  (--save-asm mode: assembly saved to adjacent .s file)"
+        else:
+            print "  sage --emit-asm --target mips <file.sage> -o <file.s>"
+            print "  Then assemble with: sagemips asm <file.s>"
         return 0
     elif cmd == "--help" or cmd == "-h":
         cmd_help([])
