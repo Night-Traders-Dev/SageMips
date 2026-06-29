@@ -1,47 +1,78 @@
 # ============================================================================
 # SageMips Makefile
 # ============================================================================
-# Supports:
-#   make              — Build SageMips (hosted)
-#   make bare         — Build freestanding / bare-metal SageMips
-#   make install      — Install to /usr/local/bin
-#   make clean        — Remove build artifacts
-#   make test         — Run tests
-#   make help         — Show targets
+# Dual-backend build: C (src/c/) and Sage (src/sage/)
+#
+#   make                    Build SageMips (C backend, hosted)
+#   make sage               Build SageMips (Sage backend)
+#   make bare               Build C backend (freestanding/bare-metal)
+#   make install            Install to /usr/local/bin
+#   make clean              Remove build artifacts
+#   make test               Run quick tests
+#   make help               Show targets
 # ============================================================================
 
 CC       ?= gcc
 CFLAGS   ?= -std=c11 -Wall -Wextra -O2
 LDFLAGS  ?=
+SAGE     ?= /usr/local/bin/sage
 
-SRC_DIR   = src
-BUILD_DIR = build
-TARGET    = sagemips
+C_SRC_DIR   = src/c
+BUILD_DIR   = build
+TARGET      = sagemips
+TARGET_SAGE = sagemips_sage
 
-SRCS = $(SRC_DIR)/mips_encode.c \
-       $(SRC_DIR)/mips_vm.c \
-       $(SRC_DIR)/mips_asm.c \
-       $(SRC_DIR)/cli.c
+# C source files
+C_SRCS = $(C_SRC_DIR)/mips_encode.c \
+         $(C_SRC_DIR)/mips_vm.c \
+         $(C_SRC_DIR)/mips_asm.c \
+         $(C_SRC_DIR)/cli.c
 
-OBJS = $(patsubst $(SRC_DIR)/%.c,$(BUILD_DIR)/%.o,$(SRCS))
+C_OBJS = $(patsubst $(C_SRC_DIR)/%.c,$(BUILD_DIR)/%.o,$(C_SRCS))
 
-# Hosted build
-$(BUILD_DIR)/%.o: $(SRC_DIR)/%.c | $(BUILD_DIR)
-	$(CC) $(CFLAGS) -c $< -o $@
+# Sage source files
+SAGE_SRCS = src/sage/sagemips_main.sage
+SAGE_PATH = src/sage
 
-$(TARGET): $(OBJS)
-	$(CC) $(CFLAGS) $(OBJS) -o $@ $(LDFLAGS)
-	@echo "Built: $(TARGET)"
+# ============================================================================
+# C Backend Build
+# ============================================================================
+
+$(BUILD_DIR)/%.o: $(C_SRC_DIR)/%.c $(C_SRC_DIR)/sagemips.h | $(BUILD_DIR)
+	$(CC) $(CFLAGS) -I$(C_SRC_DIR) -c $< -o $@
+
+$(TARGET): $(C_OBJS)
+	$(CC) $(CFLAGS) $(C_OBJS) -o $@ $(LDFLAGS)
+	@echo "Built: $(TARGET) (C backend)"
 
 all: $(TARGET)
 
-# Bare-metal build (freestanding, no libc)
+# Bare-metal build (C backend only, freestanding)
 bare: CFLAGS += -ffreestanding -nostdlib -DSAGE_BARE_METAL -fno-stack-protector
 bare: LDFLAGS += -nostdlib -static
 bare: $(TARGET)
-	@echo "Built: $(TARGET) (bare-metal)"
+	@echo "Built: $(TARGET) (C bare-metal)"
 
+# ============================================================================
+# Sage Backend Build
+# ============================================================================
+
+sage:
+	@echo "Building SageMips (Sage backend)..."
+	@mkdir -p $(BUILD_DIR)
+	SAGE_PATH=$(SAGE_PATH) $(SAGE) --compile $(SAGE_SRCS) -o $(TARGET_SAGE)
+	@echo "Built: $(TARGET_SAGE) (Sage backend)"
+
+sage-native:
+	@echo "Building SageMips (Sage -> native MIPS)..."
+	@mkdir -p $(BUILD_DIR)
+	SAGE_PATH=$(SAGE_PATH) $(SAGE) --emit-asm $(SAGE_SRCS) --target mips -o $(BUILD_DIR)/sagemips_sage.asm
+	@echo "MIPS assembly emitted to $(BUILD_DIR)/sagemips_sage.asm"
+
+# ============================================================================
 # Install
+# ============================================================================
+
 install: $(TARGET)
 	@echo "Installing to /usr/local/bin..."
 	@if [ -w /usr/local/bin ]; then \
@@ -53,16 +84,25 @@ install: $(TARGET)
 	fi
 	@echo "Installed: /usr/local/bin/$(TARGET)"
 
+# ============================================================================
 # Clean
+# ============================================================================
+
 clean:
-	@rm -rf $(BUILD_DIR) $(TARGET)
+	@rm -rf $(BUILD_DIR) $(TARGET) $(TARGET_SAGE)
 	@echo "Cleaned"
 
+# ============================================================================
 # Build directory
+# ============================================================================
+
 $(BUILD_DIR):
 	@mkdir -p $(BUILD_DIR)
 
-# Test: assemble and run a simple test
+# ============================================================================
+# Test
+# ============================================================================
+
 test: $(TARGET)
 	@echo "=== SageMips Test Suite ==="
 	@echo ""
@@ -76,16 +116,20 @@ test: $(TARGET)
 	@echo ""
 	@echo "=== Tests Complete ==="
 
+# ============================================================================
 # Help
+# ============================================================================
+
 help:
 	@echo "SageMips Build System"
 	@echo ""
 	@echo "Targets:"
-	@echo "  make           Build SageMips (hosted)"
-	@echo "  make bare      Build freestanding SageMips"
+	@echo "  make           Build SageMips (C backend, hosted)"
+	@echo "  make sage      Build SageMips (Sage backend)"
+	@echo "  make bare      Build C backend (freestanding/bare-metal)"
 	@echo "  make install   Install to /usr/local/bin"
 	@echo "  make clean     Remove build artifacts"
 	@echo "  make test      Run quick tests"
 	@echo "  make help      Show this help"
 
-.PHONY: all bare install clean test help
+.PHONY: all bare sage sage-native install clean test help

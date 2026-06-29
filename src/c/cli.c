@@ -114,8 +114,16 @@ static void print_int(int n) {
 }
 
 // ============================================================================
-// Usage
+// Syscall output callback (used by VM print syscalls)
 // ============================================================================
+#ifndef SAGE_BARE_METAL
+static void vm_write_str_cb(const char* s) {
+    fputs(s, stdout);
+}
+static void vm_write_char_cb(char c) {
+    fputc(c, stdout);
+}
+#endif
 static void usage(const char* prog) {
     print_str("SageMips - MIPS32 VM + Assembler + Compiler\n");
     print_str("Usage:\n");
@@ -187,6 +195,10 @@ static int cmd_run(const char* path, int trace) {
     MipsVM* vm = mips_vm_create();
     if (!vm) { free(code); print_str("Error: failed to create VM\n"); return 1; }
     vm->trace = trace;
+#ifndef SAGE_BARE_METAL
+    vm->write_str = vm_write_str_cb;
+    vm->write_char = vm_write_char_cb;
+#endif
 
     if (mips_vm_load(vm, code, len) < 0) {
         print_str("Error: failed to load binary\n");

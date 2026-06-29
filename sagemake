@@ -2,8 +2,15 @@
 """
 SageMips Unified Build System (sagemake)
 Builds the SageMips MIPS32 VM + Assembler + Compiler as a single ELF.
+
+  python3 sagemake --c       Build C backend (default)
+  python3 sagemake --sage    Build Sage backend
+  python3 sagemake --install Install after build
+  python3 sagemake --bare    Build C backend (freestanding)
+  python3 sagemake --test    Build + run tests
+  python3 sagemake --clean   Clean build artifacts
 """
-import os, sys, subprocess, time, shutil
+import os, sys, subprocess, time
 from pathlib import Path
 
 VERSION = "1.0.0"
@@ -33,154 +40,179 @@ def run_cmd(cmd, cwd=None, env=None):
         if env: e.update(env)
         r = subprocess.run(cmd, cwd=cwd, env=e, capture_output=True, text=True)
         return r
-    except Exception as ex:
+    except Exception:
         return None
 
-def check_deps():
-    section("Checking dependencies")
-    step("Checking for cc (gcc/clang)")
-    r = run_cmd(["which", "gcc"])
-    if r and r.returncode == 0:
-        step_ok("gcc found")
-    else:
-        r = run_cmd(["which", "clang"])
-        if r and r.returncode == 0:
-            step_ok("clang found")
-        else:
-            step_fail("No C compiler found")
-
-    step("Checking for sage")
-    sage_paths = [
+def find_sage():
+    """Find the sage compiler binary"""
+    paths = [
         SCRIPT_DIR / "deps" / "SageLang" / "core" / "sage",
         Path("/usr/local/bin/sage"),
         Path.home() / ".local" / "bin" / "sage",
     ]
-    found_sage = None
-    for sp in sage_paths:
+    for sp in paths:
         if sp.exists() and os.access(sp, os.X_OK):
-            found_sage = sp
-            break
-    if found_sage:
-        step_ok(f"sage found: {found_sage}")
+            return sp
+    # Try PATH
+    r = run_cmd(["which", "sage"])
+    if r and r.returncode == 0:
+        return Path(r.stdout.strip())
+    return None
+
+def check_c_deps():
+    section("Checking C build dependencies")
+    r = run_cmd(["which", "gcc"])
+    if r and r.returncode == 0:
+        step_ok(f"gcc: {r.stdout.strip()}")
     else:
-        step_ok("sage not found (cross-compilation will use cc only)")
+        r = run_cmd(["which", "clang"])
+        if r and r.returncode == 0:
+            step_ok(f"clang: {r.stdout.strip()}")
+        else:
+            step_fail("No C compiler found (install gcc or clang)")
 
-    return found_sage
+def check_sage_deps():
+    section("Checking Sage build dependencies")
+    found = find_sage()
+    if found:
+        step_ok(f"sage: {found}")
+    else:
+        step_fail("sage not found (install SageLang or use --c for C backend)")
+    return found
 
-def build_hosted():
-    section("Building SageMips (hosted)")
+def build_c_hosted():
+    section("Building SageMips (C backend, hosted)")
     r = run_cmd(["make", "-C", str(SCRIPT_DIR)], cwd=str(SCRIPT_DIR))
     if r and r.returncode == 0:
-        step_ok("build complete")
+        step_ok("built: sagemips")
     else:
-        if r:
-            print(r.stderr)
-        step_fail("Build failed")
+        print(r.stderr if r else "")
+        step_fail("C build failed")
 
-def build_bare():
-    section("Building SageMips (bare-metal)")
+def build_c_bare():
+    section("Building SageMips (C backend, bare-metal)")
     r = run_cmd(["make", "bare", "-C", str(SCRIPT_DIR)], cwd=str(SCRIPT_DIR))
     if r and r.returncode == 0:
-        step_ok("bare-metal build complete")
+        step_ok("built: sagemips (bare-metal)")
     else:
-        if r:
-            print(r.stderr)
+        print(r.stderr if r else "")
         step_fail("Bare-metal build failed")
 
-def build_sage():
-    section("Bootstrapping SageLang")
-    sage_path = SCRIPT_DIR / "deps" / "SageLang" / "core"
-    if not (sage_path / "Makefile").exists():
-        step("Skipping (SageLang not in deps)")
-        step_ok()
-        return None
+def build_sage_backend():
+    section("Building SageMips (Sage backend)")
+    sage_bin = find_sage()
+    if not sage_bin:
+        step_fail("sage not found")
 
-    if (sage_path / "sage").exists():
-        step("Using existing sage binary")
-        step_ok()
-        return sage_path / "sage"
+    sage_path = str(SCRIPT_DIR / "src" / "sage")
+    main_file = str(SCRIPT_DIR / "src" / "sage" / "sagemips_main.sage")
+    output = str(SCRIPT_DIR / "sagemips_sage")
 
-    step("Compiling SageLang core")
-    start = time.time()
-    r = run_cmd(
-        ["make", "-j", str(os.cpu_count() or 2)],
-        cwd=str(sage_path),
-        env={"LDFLAGS": "-lm -lpthread -ldl"}
-    )
+    env = {"SAGE_PATH": sage_path}
+    step(f"Compiling with sage: {main_file}")
+    r = run_cmd([str(sage_bin), "--compile", main_file, "-o", output], env=env)
     if r and r.returncode == 0:
-        elapsed = int(time.time() - start)
-        step_ok(f"{elapsed}s")
+        step_ok(f"built: {output}")
     else:
-        if r:
-            print(f"\nstderr: {r.stderr[:500]}")
-        step_fail("SageLang build failed")
-    return sage_path / "sage"
+        print(f"\nstdout: {r.stdout if r else ''}")
+        print(f"stderr: {r.stderr if r else ''}")
+        step_fail("Sage build failed")
+
+def build_sage_native():
+    """Emit MIPS assembly from Sage source (cross-compilation)"""
+    section("Building SageMips (Sage -> MIPS native)")
+    sage_bin = find_sage()
+    if not sage_bin:
+        step_fail("sage not found")
+
+    sage_path = str(SCRIPT_DIR / "src" / "sage")
+    main_file = str(SCRIPT_DIR / "src" / "sage" / "sagemips_main.sage")
+    output = str(SCRIPT_DIR / "build" / "sagemips_sage.asm")
+
+    env = {"SAGE_PATH": sage_path}
+    step(f"Emitting MIPS assembly: {main_file}")
+    r = run_cmd([str(sage_bin), "--emit-asm", main_file, "--target", "mips", "-o", output], env=env)
+    if r and r.returncode == 0:
+        step_ok(f"emitted: {output}")
+    else:
+        print(f"\nstdout: {r.stdout if r else ''}")
+        print(f"stderr: {r.stderr if r else ''}")
+        step_fail("MIPS emission failed")
 
 def install():
     section("Installing SageMips")
     target = SCRIPT_DIR / "sagemips"
     if not target.exists():
-        step_fail("sagemips binary not found (run build first)")
-
-    step("Copying to /usr/local/bin")
+        step_fail("sagemips binary not found (build first)")
     r = run_cmd(["sudo", "cp", str(target), "/usr/local/bin/sagemips"])
     if r and r.returncode == 0:
         run_cmd(["sudo", "chmod", "755", "/usr/local/bin/sagemips"])
-        step_ok("installed")
+        step_ok("installed to /usr/local/bin/sagemips")
     else:
         step_fail("install failed")
 
 def run_tests():
-    section("Running tests")
-    r = run_cmd(["make", "test", "-C", str(SCRIPT_DIR)], cwd=str(SCRIPT_DIR))
+    section("Running test suite")
+    r = run_cmd(["make", "test", "-C", str(SCRIPT_DIR)])
     if r and r.returncode == 0:
-        step_ok("all tests passed")
+        step_ok("tests passed")
     else:
-        step_ok("some tests may have failed (see above)")
+        step_ok("tests completed (see above)")
+
+def clean():
+    section("Cleaning")
+    r = run_cmd(["make", "clean", "-C", str(SCRIPT_DIR)])
+    # Also remove Sage-built binary
+    sage_bin = SCRIPT_DIR / "sagemips_sage"
+    if sage_bin.exists():
+        sage_bin.unlink()
+    step_ok("cleaned")
 
 def main():
     import argparse
     p = argparse.ArgumentParser(description="SageMips Unified Build System")
-    p.add_argument("command", nargs="?", default="build", help="build, bare, install, test, clean, help")
+    p.add_argument("--c", dest="use_c", action="store_true", default=True,
+                   help="Build C backend [default]")
+    p.add_argument("--sage", dest="use_sage", action="store_true",
+                   help="Build Sage backend")
+    p.add_argument("--bare", action="store_true", help="Build bare-metal (C only)")
+    p.add_argument("--native", action="store_true", help="Emit MIPS assembly from Sage source")
     p.add_argument("--install", action="store_true", help="Install after build")
+    p.add_argument("--test", action="store_true", help="Run test suite after build")
+    p.add_argument("--clean", action="store_true", help="Clean build artifacts")
     args = p.parse_args()
 
     banner(f"SageMips Build Pipeline v{VERSION}")
 
-    if args.command == "help":
-        print("Commands: build [default], bare, install, test, clean, help")
+    if args.clean:
+        clean()
         return
 
-    if args.command == "clean":
-        run_cmd(["make", "clean", "-C", str(SCRIPT_DIR)])
-        return
-
-    if args.command == "install":
-        install()
-        return
-
-    if args.command == "test":
-        check_deps()
-        build_hosted()
-        run_tests()
-        return
-
-    if args.command == "bare":
-        check_deps()
-        build_sage()
-        build_bare()
-        return
-
-    # Default: build
-    check_deps()
-    build_sage()
-    build_hosted()
+    if args.use_sage:
+        check_sage_deps()
+        if args.native:
+            build_sage_native()
+        else:
+            build_sage_backend()
+    elif args.bare:
+        check_c_deps()
+        build_c_bare()
+    else:
+        # Default: C backend
+        check_c_deps()
+        build_c_hosted()
 
     if args.install:
         install()
 
+    if args.test:
+        run_tests()
+
     banner("Build Complete")
-    print(f"  Binary: {SCRIPT_DIR}/sagemips")
+    if args.use_sage:
+        print(f"  Binary: {SCRIPT_DIR}/sagemips_sage")
+    else:
+        print(f"  Binary: {SCRIPT_DIR}/sagemips")
     print(f"  Usage:  ./sagemips --help")
 
 if __name__ == "__main__":

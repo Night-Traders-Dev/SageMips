@@ -154,7 +154,10 @@ int mips_asm_assemble_line(MipsAsmState* st, const char* line) {
     if (mnemonic[0] == '.') {
         if (str_eq(mnemonic, ".word")) {
             int ok; int val = parse_int(&p, &ok);
-            if (ok && st->pass == 1) emit4(st, (uint32_t)val);
+            if (ok) {
+                if (st->pass == 1) emit4(st, (uint32_t)val);
+                else st->code_len += 4;
+            }
             return ok ? 0 : -1;
         }
         if (str_eq(mnemonic, ".byte")) {
@@ -170,8 +173,21 @@ int mips_asm_assemble_line(MipsAsmState* st, const char* line) {
             if (*p == '"') {
                 p++; int count = 0;
                 while (*p && *p != '"' && count < 4096) {
+                    char emit_char = *p;
+                    if (*p == '\\' && *(p+1)) {
+                        p++;
+                        if (*p == 'n') emit_char = '\n';
+                        else if (*p == 't') emit_char = '\t';
+                        else if (*p == 'r') emit_char = '\r';
+                        else if (*p == '\\') emit_char = '\\';
+                        else if (*p == '"') emit_char = '"';
+                        else if (*p == '0') emit_char = '\0';
+                        else { emit_char = *p; }
+                    }
                     if (st->pass == 1 && st->code_len < MIPS_CODE_MAX)
-                        st->code[st->code_len++] = (uint8_t)*p;
+                        st->code[st->code_len++] = (uint8_t)emit_char;
+                    else if (st->pass == 0)
+                        st->code_len++;
                     p++; count++;
                 }
                 if (*p == '"') p++;
@@ -183,21 +199,40 @@ int mips_asm_assemble_line(MipsAsmState* st, const char* line) {
             if (*p == '"') {
                 p++; int count = 0;
                 while (*p && *p != '"' && count < 4096) {
+                    char emit_char = *p;
+                    if (*p == '\\' && *(p+1)) {
+                        p++;
+                        if (*p == 'n') emit_char = '\n';
+                        else if (*p == 't') emit_char = '\t';
+                        else if (*p == 'r') emit_char = '\r';
+                        else if (*p == '\\') emit_char = '\\';
+                        else if (*p == '"') emit_char = '"';
+                        else if (*p == '0') emit_char = '\0';
+                        else { emit_char = *p; }
+                    }
                     if (st->pass == 1 && st->code_len < MIPS_CODE_MAX)
-                        st->code[st->code_len++] = (uint8_t)*p;
+                        st->code[st->code_len++] = (uint8_t)emit_char;
+                    else if (st->pass == 0)
+                        st->code_len++;
                     p++; count++;
                 }
                 if (*p == '"') p++;
                 if (st->pass == 1 && st->code_len < MIPS_CODE_MAX)
                     st->code[st->code_len++] = 0;
+                else if (st->pass == 0)
+                    st->code_len++;
             }
             return 0;
         }
         if (str_eq(mnemonic, ".space")) {
             int ok; int n = parse_int(&p, &ok);
-            if (ok && st->pass == 1) {
-                for (int i = 0; i < n && st->code_len < MIPS_CODE_MAX; i++)
-                    st->code[st->code_len++] = 0;
+            if (ok) {
+                if (st->pass == 1) {
+                    for (int i = 0; i < n && st->code_len < MIPS_CODE_MAX; i++)
+                        st->code[st->code_len++] = 0;
+                } else {
+                    st->code_len += n;
+                }
             }
             return ok ? 0 : -1;
         }
@@ -267,6 +302,14 @@ int mips_asm_assemble_line(MipsAsmState* st, const char* line) {
     if (str_eq(mnemonic, "li") || str_eq(mnemonic, "la")) {
         int rt = mips_reg_from_name(tok1);
         if (rt < 0) return -1;
+
+        if (st->pass == 0) {
+            // li/la expands to 1 or 2 instructions
+            // For simplicity, always reserve 8 bytes
+            st->code_len += 8;
+            return 0;
+        }
+
         const char* ip = tok2[0] ? tok2 : (p);
         int ok, val = parse_int(&ip, &ok);
         if (!ok) {
