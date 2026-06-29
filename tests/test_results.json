@@ -1,0 +1,246 @@
+{
+  "passed": 40,
+  "failed": 0,
+  "tests": [
+    {
+      "name": "add",
+      "category": "vm",
+      "passed": true,
+      "message": "exit=0"
+    },
+    {
+      "name": "sub",
+      "category": "vm",
+      "passed": true,
+      "message": "exit=0"
+    },
+    {
+      "name": "mul",
+      "category": "vm",
+      "passed": true,
+      "message": "exit=0"
+    },
+    {
+      "name": "div+mfhi+mflo",
+      "category": "vm",
+      "passed": true,
+      "message": "exit=0"
+    },
+    {
+      "name": "and/or/xor",
+      "category": "vm",
+      "passed": true,
+      "message": "exit=0"
+    },
+    {
+      "name": "shifts",
+      "category": "vm",
+      "passed": true,
+      "message": "exit=0"
+    },
+    {
+      "name": "beq (taken)",
+      "category": "vm",
+      "passed": true,
+      "message": "exit=0"
+    },
+    {
+      "name": "bne (taken)",
+      "category": "vm",
+      "passed": true,
+      "message": "exit=0"
+    },
+    {
+      "name": "bgtz",
+      "category": "vm",
+      "passed": true,
+      "message": "exit=0"
+    },
+    {
+      "name": "blez",
+      "category": "vm",
+      "passed": true,
+      "message": "exit=0"
+    },
+    {
+      "name": "loop (5 iterations)",
+      "category": "vm",
+      "passed": true,
+      "message": "exit=0"
+    },
+    {
+      "name": "lw/sw",
+      "category": "vm",
+      "passed": true,
+      "message": "exit=0"
+    },
+    {
+      "name": "lb/sb",
+      "category": "vm",
+      "passed": true,
+      "message": "exit=0"
+    },
+    {
+      "name": "r-type add",
+      "category": "asm",
+      "passed": true,
+      "message": "assembled"
+    },
+    {
+      "name": "i-type addiu",
+      "category": "asm",
+      "passed": true,
+      "message": "assembled"
+    },
+    {
+      "name": "jal with label",
+      "category": "asm",
+      "passed": true,
+      "message": "assembled"
+    },
+    {
+      "name": "simple program",
+      "category": "asm",
+      "passed": true,
+      "message": "assembled"
+    },
+    {
+      "name": "nop",
+      "category": "asm",
+      "passed": true,
+      "message": "assembled"
+    },
+    {
+      "name": "move",
+      "category": "asm",
+      "passed": true,
+      "message": "assembled"
+    },
+    {
+      "name": "li (large imm)",
+      "category": "asm",
+      "passed": true,
+      "message": "assembled"
+    },
+    {
+      "name": "not",
+      "category": "asm",
+      "passed": true,
+      "message": "assembled"
+    },
+    {
+      "name": "neg",
+      "category": "asm",
+      "passed": true,
+      "message": "assembled"
+    },
+    {
+      "name": "b (unconditional)",
+      "category": "asm",
+      "passed": true,
+      "message": "assembled"
+    },
+    {
+      "name": ".word",
+      "category": "asm",
+      "passed": true,
+      "message": "assembled"
+    },
+    {
+      "name": ".byte",
+      "category": "asm",
+      "passed": true,
+      "message": "assembled"
+    },
+    {
+      "name": ".asciiz",
+      "category": "asm",
+      "passed": true,
+      "message": "assembled"
+    },
+    {
+      "name": ".ascii",
+      "category": "asm",
+      "passed": true,
+      "message": "assembled"
+    },
+    {
+      "name": "disassemble addiu+jr",
+      "category": "dis",
+      "passed": true,
+      "message": "output correct"
+    },
+    {
+      "name": "disassemble branch",
+      "category": "dis",
+      "passed": true,
+      "message": "output correct"
+    },
+    {
+      "name": "disassemble syscall",
+      "category": "dis",
+      "passed": true,
+      "message": "output correct"
+    },
+    {
+      "name": "roundtrip 4 instructions",
+      "category": "encode",
+      "passed": true,
+      "message": "all 4 roundtrips match"
+    },
+    {
+      "name": "--help",
+      "category": "cli",
+      "passed": true,
+      "message": "help shown"
+    },
+    {
+      "name": "--version",
+      "category": "cli",
+      "passed": true,
+      "message": "version shown"
+    },
+    {
+      "name": "unknown command",
+      "category": "cli",
+      "passed": true,
+      "message": "errored"
+    },
+    {
+      "name": "minimal program",
+      "category": "edge",
+      "passed": true,
+      "message": "exit=0"
+    },
+    {
+      "name": "division by zero",
+      "category": "edge",
+      "passed": true,
+      "message": "handled"
+    },
+    {
+      "name": "forward branch",
+      "category": "edge",
+      "passed": true,
+      "message": "exit=0"
+    },
+    {
+      "name": "backward branch",
+      "category": "edge",
+      "passed": true,
+      "message": "exit=0"
+    },
+    {
+      "name": "large immediates (li 32bit)",
+      "category": "edge",
+      "passed": true,
+      "message": "exit=0"
+    },
+    {
+      "name": "branch delay slot",
+      "category": "edge",
+      "passed": true,
+      "message": "exit=0"
+    }
+  ]
+}

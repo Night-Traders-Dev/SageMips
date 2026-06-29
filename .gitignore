@@ -1,0 +1,32 @@
+# Build artifacts
+build/
+sagemips
+*.o
+*.mips
+*.sgrv
+*.sgvm
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Temp
+/tmp/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+
+# deps (submodules — not tracked in main repo directly)
+deps/SageLang/
+deps/SageVM/
+
+# Editor
+*~
+*.swp
+*.swo

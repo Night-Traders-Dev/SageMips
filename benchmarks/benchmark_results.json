@@ -1,0 +1,94 @@
+{
+  "version": "1.0.0",
+  "timestamp": "2026-06-29 11:28:35",
+  "summary": {
+    "total_time_ms": 14.0,
+    "total_instructions": 6331550,
+    "average_mips": 612.57
+  },
+  "benchmarks": [
+    {
+      "name": "Integer Arithmetic (7 ops/iter)",
+      "iterations": 100000,
+      "instructions": 1200005,
+      "time_ms": 1.3,
+      "mips": 919.95,
+      "ns_per_instr": 1.1,
+      "ops_per_sec": 538461538.46
+    },
+    {
+      "name": "Branch Heavy (beq+bne+bgtz)",
+      "iterations": 50000,
+      "instructions": 150005,
+      "time_ms": 1.01,
+      "mips": 148.91,
+      "ns_per_instr": 6.7
+    },
+    {
+      "name": "Memory Read/Write (8 mem ops/iter)",
+      "iterations": 50000,
+      "instructions": 700005,
+      "time_ms": 0.67,
+      "mips": 1051.1,
+      "ns_per_instr": 1.0,
+      "ops_per_sec": 597014925.37
+    },
+    {
+      "name": "Multiply Heavy (5 mul ops/iter)",
+      "iterations": 50000,
+      "instructions": 500005,
+      "time_ms": 0.9,
+      "mips": 556.26,
+      "ns_per_instr": 1.8,
+      "ops_per_sec": 277777777.78
+    },
+    {
+      "name": "Division Heavy (2 div/iter)",
+      "iterations": 20000,
+      "instructions": 240005,
+      "time_ms": 3.1,
+      "mips": 77.32,
+      "ns_per_instr": 12.9
+    },
+    {
+      "name": "Shift Operations (6 shift/iter)",
+      "iterations": 100000,
+      "instructions": 1200005,
+      "time_ms": 0.87,
+      "mips": 1375.09,
+      "ns_per_instr": 0.7
+    },
+    {
+      "name": "Fibonacci (5000 terms)",
+      "iterations": 5000,
+      "instructions": 40005,
+      "time_ms": 0.95,
+      "mips": 42.0,
+      "ns_per_instr": 23.8
+    },
+    {
+      "name": "Nested Loops (200x200)",
+      "iterations": 40000,
+      "instructions": 800005,
+      "time_ms": 3.28,
+      "mips": 243.75,
+      "ns_per_instr": 4.1
+    },
+    {
+      "name": "Prime Counting (n\u2264500)",
+      "iterations": 500,
+      "instructions": 1505,
+      "time_ms": 1.03,
+      "mips": 1.46,
+      "ns_per_instr": 683.6
+    },
+    {
+      "name": "Mixed ALU (10 ops/iter x 100k)",
+      "iterations": 100000,
+      "instructions": 1500005,
+      "time_ms": 0.88,
+      "mips": 1709.83,
+      "ns_per_instr": 0.6
+    }
+  ]
+}
