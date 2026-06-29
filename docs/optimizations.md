@@ -8,8 +8,10 @@ SageMips provides two complementary optimization strategies that can be used ind
 |----------|-------|-------------|-------------|
 | **AOT** (Ahead-of-Time) | Before execution | Static peephole optimizations on the binary | `--aot` |
 | **JIT** (Just-in-Time) | During execution | Instruction cache + basic block profiling | `--jit` |
+| **ARC** (Auto Ref Counting) | During execution | Deterministic ref-counted string pool | `--arc` |
+| **ORC** (Optimized Ref Count) | During execution | Cycle detection + trial deletion (requires ARC) | `--orc` |
 
-Both strategies are implemented identically in the C backend (`src/c/`) and Sage backend (`src/sage/`).
+All four strategies are implemented identically in the C backend (`src/c/`) and Sage backend (`src/sage/`).
 
 ## Optimization Pipeline
 
@@ -120,6 +122,22 @@ Planned but not yet implemented:
 
 Optimizations are always compiled in — they're enabled at runtime via flags:
 ```bash
+make JIT=1 AOT=1 ARC=1 ORC=1  # explicit build with all modules
+make                           # standard build (all flags available)
+```
+
+## Usage Examples
+
+```bash
+# All optimizations at once
+sagemips run program.mips --jit --aot --arc --orc
+
+# Just memory management
+sagemips run program.mips --arc --orc
+
+# Speed + memory
+sagemips run program.mips --jit --arc
+```
 make              # Standard build (--jit and --aot available)
 make JIT=1 AOT=1  # Explicit build with optimization modules
 ```

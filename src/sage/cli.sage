@@ -6,6 +6,8 @@ import mips_vm
 import mips_asm
 import mips_aot
 import mips_jit
+import mips_arc
+import mips_orc
 import sys
 import io
 
@@ -38,13 +40,15 @@ proc read_text_file(path):
 
 proc cmd_run(args):
     if len(args) < 1:
-        print "Usage: run <file> [--trace] [--jit] [--aot]"
+        print "Usage: run <file> [--trace] [--jit] [--aot] [--arc] [--orc]"
         return 1
 
     let path = args[0]
     var trace = false
     var use_jit = false
     var use_aot = false
+    var use_arc = false
+    var use_orc = false
     var i = 1
     while i < len(args):
         if args[i] == "--trace":
@@ -53,6 +57,10 @@ proc cmd_run(args):
             use_jit = true
         elif args[i] == "--aot":
             use_aot = true
+        elif args[i] == "--arc":
+            use_arc = true
+        elif args[i] == "--orc":
+            use_orc = true
         i = i + 1
 
     let code = read_binary_file(path)
@@ -86,12 +94,36 @@ proc cmd_run(args):
         let bbs = jit.stats()
         print "JIT: " + str(bbs) + " basic blocks"
 
+    # ARC initialization
+    var arc = nil
+    if use_arc:
+        arc = mips_arc.MipsARC()
+        print "ARC: reference counting enabled"
+
+    # ORC initialization (auto-enables ARC if needed)
+    var orc = nil
+    if use_orc:
+        orc = mips_orc.MipsORC()
+        if not use_arc:
+            arc = mips_arc.MipsARC()
+        print "ORC: cycle detection enabled"
+
     let ret = vm.run()
 
     # JIT stats on exit
     if jit != nil:
         let bbs = jit.stats()
         print "JIT stats: " + str(bbs) + " BBs"
+
+    # ARC stats
+    if arc != nil:
+        let a_stats = arc.stats()
+        print "ARC stats: " + str(a_stats[0]) + " allocs, " + str(a_stats[1]) + " frees, " + str(a_stats[2]) + " live"
+
+    # ORC stats
+    if orc != nil:
+        let o_stats = orc.stats()
+        print "ORC stats: " + str(o_stats[0]) + " cycles, " + str(o_stats[1]) + " collected"
 
     return ret
 
@@ -146,8 +178,10 @@ proc cmd_help(args):
     print "  compile <file.sage>    Compile Sage -> MIPS (host only)"
     print "  emit    <file.sage>    Emit MIPS assembly from Sage"
     print "  Optimizations:"
-    print "    --jit                 Enable JIT (instruction cache + basic blocks)"
-    print "    --aot                 Enable AOT (NOP elimination, const fold)"
+    print "    --jit                 JIT: instruction cache + basic blocks"
+    print "    --aot                 AOT: NOP elimination, const fold"
+    print "    --arc                 ARC: automatic reference counting"
+    print "    --orc                 ORC: cycle detection"
     print "    --trace               Show VM instruction trace"
     print "  --help                  Show this help"
     print "  --version               Show version"
@@ -174,7 +208,7 @@ proc dispatch():
         if rest[i] == "--save-asm":
             save_asm = true
             rest = rest[0:i] + rest[i+1:]
-        elif rest[i] == "--trace" or rest[i] == "--jit" or rest[i] == "--aot":
+        elif rest[i] == "--trace" or rest[i] == "--jit" or rest[i] == "--aot" or rest[i] == "--arc" or rest[i] == "--orc":
             i = i + 1
         else:
             i = i + 1

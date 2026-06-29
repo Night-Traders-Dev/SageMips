@@ -1,0 +1,62 @@
+{
+  "C/None": {
+    "time_ms": 5.83,
+    "mips": 7.7,
+    "instr": 45005
+  },
+  "C/JIT": {
+    "time_ms": 5.31,
+    "mips": 8.5,
+    "instr": 45005
+  },
+  "C/AOT": {
+    "time_ms": 6.52,
+    "mips": 6.9,
+    "instr": 45005
+  },
+  "C/ARC": {
+    "time_ms": 4.1,
+    "mips": 11.0,
+    "instr": 45005
+  },
+  "C/ORC": {
+    "time_ms": 4.54,
+    "mips": 9.9,
+    "instr": 45005
+  },
+  "C/ALL": {
+    "time_ms": 7.19,
+    "mips": 6.3,
+    "instr": 45005
+  },
+  "Sage/None": {
+    "time_ms": 0.89,
+    "mips": 50.5,
+    "instr": 45005
+  },
+  "Sage/JIT": {
+    "time_ms": 0.89,
+    "mips": 50.8,
+    "instr": 45005
+  },
+  "Sage/AOT": {
+    "time_ms": 1.26,
+    "mips": 35.8,
+    "instr": 45005
+  },
+  "Sage/ARC": {
+    "time_ms": 1.06,
+    "mips": 42.5,
+    "instr": 45005
+  },
+  "Sage/ORC": {
+    "time_ms": 1.19,
+    "mips": 37.8,
+    "instr": 45005
+  },
+  "Sage/ALL": {
+    "time_ms": 1.04,
+    "mips": 43.1,
+    "instr": 45005
+  }
+}

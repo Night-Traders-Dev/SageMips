@@ -249,6 +249,8 @@ typedef struct {
     // JIT/AOT optimization state (opaque — use void* to avoid circular deps)
     void* jit;           // MipsJITState* when JIT enabled
     void* aot;           // MipsAOTState* when AOT enabled
+    void* arc;           // MipsARCState* when ARC enabled
+    void* orc;           // MipsORCState* when ORC enabled
     const uint8_t* orig_code;
     uint32_t orig_code_length;
 } MipsVM;
@@ -316,6 +318,53 @@ typedef struct {
 } MipsAOTState;
 
 // ============================================================================
+// Memory Optimization Configuration
+// ============================================================================
+#define ARC_STRING_POOL_MAX    8192    // max ref-counted string entries
+#define ORC_CYCLE_THRESHOLD    256     // allocs before cycle detection scan
+
+// ============================================================================
+// ARC State — Automatic Reference Counting for string pool
+// ============================================================================
+typedef struct {
+    int32_t  refcount;           // reference count (-1 = static/frozen)
+    uint32_t str_offset;          // offset into strings[] pool
+    uint32_t str_len;             // length of string
+} ARCStringEntry;
+
+typedef struct {
+    ARCStringEntry entries[ARC_STRING_POOL_MAX];
+    uint32_t       entry_count;
+    uint32_t       total_allocs;
+    uint32_t       total_frees;
+    uint32_t       leak_count;     // strings still alive at destroy
+    int            enabled;
+} MipsARCState;
+
+// ============================================================================
+// ORC State — Optimized Reference Counting with cycle detection
+// ============================================================================
+#define ORC_COLOR_WHITE  0   // unreachable
+#define ORC_COLOR_GRAY   1   // being scanned
+#define ORC_COLOR_BLACK  2   // reachable
+#define ORC_COLOR_PURPLE 3   // possible cycle root
+
+typedef struct {
+    uint32_t entry_idx;         // index into ARC entries
+    uint8_t  color;             // ORC color for cycle detection
+    uint32_t cycle_count;       // times this was in a detected cycle
+} ORCEntry;
+
+typedef struct {
+    ORCEntry entries[ARC_STRING_POOL_MAX];
+    uint32_t  entry_count;
+    uint32_t  allocs_since_scan;  // trigger scan when > threshold
+    uint32_t  cycles_detected;    // total cycles found
+    uint32_t  objects_collected;  // total objects freed by ORC
+    int       enabled;
+} MipsORCState;
+
+// ============================================================================
 // Register Names (declared here, defined in mips_encode.c)
 // ============================================================================
 extern const char* mips_reg_names[32];
@@ -359,6 +408,19 @@ int  mips_aot_optimize(MipsAOTState* aot, const uint8_t* code, uint32_t len);
 void mips_jit_init(MipsJITState* jit, MipsVM* vm);
 void mips_jit_warmup(MipsJITState* jit, MipsVM* vm);
 void mips_jit_stats(MipsJITState* jit, int* cache_entries, int* bb_count);
+
+// ARC (Automatic Reference Counting)
+void mips_arc_init(MipsARCState* arc);
+int  mips_arc_track_string(MipsARCState* arc, uint32_t str_offset, uint32_t str_len);
+void mips_arc_retain(MipsARCState* arc, int entry_idx);
+void mips_arc_release(MipsARCState* arc, int entry_idx, MipsVM* vm);
+void mips_arc_stats(MipsARCState* arc, int* allots, int* frees, int* leaks);
+
+// ORC (Optimized Reference Counting with cycle detection)
+void mips_orc_init(MipsORCState* orc, MipsARCState* arc);
+void mips_orc_check_cycle(MipsORCState* orc, MipsARCState* arc, MipsVM* vm);
+void mips_orc_notify_alloc(MipsORCState* orc, MipsARCState* arc, MipsVM* vm);
+void mips_orc_stats(MipsORCState* orc, int* cycles, int* collected);
 
 // Utility
 int  mips_reg_from_name(const char* name);

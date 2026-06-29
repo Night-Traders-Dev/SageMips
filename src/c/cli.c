@@ -134,8 +134,10 @@ static void usage(const char* prog) {
     print_str("  "); print_str(prog); print_str(" compile <file.sage> [-o out.s]  Compile Sage -> MIPS\n");
     print_str("  "); print_str(prog); print_str(" cc      <file.c>        Compile C -> MIPS binary\n");
     print_str("  Optimizations:\n");
-    print_str("    --jit                 Enable JIT (instruction cache + basic blocks)\n");
-    print_str("    --aot                 Enable AOT (NOP elimination, const fold, branch opt)\n");
+    print_str("    --jit                 JIT: instruction cache + basic blocks\n");
+    print_str("    --aot                 AOT: NOP elimination, const fold, branch opt\n");
+    print_str("    --arc                 ARC: automatic reference counting\n");
+    print_str("    --orc                 ORC: cycle detection (requires --arc)\n");
     print_str("    --trace               Show VM instruction trace\n");
     print_str("    -o <file>             Output file path\n");
     print_str("  "); print_str(prog); print_str(" --help                 Show this help\n");
@@ -192,7 +194,7 @@ static int write_file(const char* path, const uint8_t* data, uint32_t len) {
 // Handle Commands
 // ============================================================================
 
-static int cmd_run(const char* path, int trace, int use_jit, int use_aot) {
+static int cmd_run(const char* path, int trace, int use_jit, int use_aot, int use_arc, int use_orc) {
 #ifndef SAGE_BARE_METAL
     // Check file extension for common mistakes
     const char* ext = strrchr(path, '.');
@@ -289,6 +291,27 @@ static int cmd_run(const char* path, int trace, int use_jit, int use_aot) {
         print_str(" basic blocks\n");
     }
 
+    // ARC initialization
+    MipsARCState arc_state;
+    if (use_arc) {
+        mips_arc_init(&arc_state);
+        vm->arc = &arc_state;
+        print_str("ARC: reference counting enabled\n");
+    }
+
+    // ORC initialization (requires ARC)
+    MipsORCState orc_state;
+    if (use_orc) {
+        mips_orc_init(&orc_state, use_arc ? &arc_state : NULL);
+        vm->orc = &orc_state;
+        if (!use_arc) {
+            // ORC needs ARC — auto-enable
+            mips_arc_init(&arc_state);
+            vm->arc = &arc_state;
+        }
+        print_str("ORC: cycle detection enabled\n");
+    }
+
     int ret = mips_vm_run(vm);
     if (vm->error) {
         print_str("VM Error: ");
@@ -307,11 +330,33 @@ static int cmd_run(const char* path, int trace, int use_jit, int use_aot) {
         print_str(" BBs\n");
     }
 
+    // ARC stats
+    if (use_arc && vm->arc) {
+        int allocs, frees, leaks;
+        mips_arc_stats(vm->arc, &allocs, &frees, &leaks);
+        print_str("ARC stats: ");
+        print_int(allocs);
+        print_str(" allocs, ");
+        print_int(frees);
+        print_str(" frees, ");
+        print_int(leaks);
+        print_str(" live\n");
+    }
+    if (use_orc && vm->orc) {
+        int cycles, collected;
+        mips_orc_stats(vm->orc, &cycles, &collected);
+        print_str("ORC stats: ");
+        print_int(cycles);
+        print_str(" cycles, ");
+        print_int(collected);
+        print_str(" collected\n");
+    }
+
     free(code);
     mips_vm_destroy(vm);
     return ret;
 #else
-    (void)path; (void)trace; (void)use_jit; (void)use_aot;
+    (void)path; (void)trace; (void)use_jit; (void)use_aot; (void)use_arc; (void)use_orc;
     return 1;
 #endif
 }
@@ -627,14 +672,16 @@ int main(int argc, char** argv) {
         return 0;
     }
     if (strcmp(cmd, "run") == 0) {
-        if (argc < 3) { print_str("Usage: "); print_str(prog); print_str(" run <file.mips> [--trace] [--jit] [--aot]\n"); return 1; }
-        int trace = 0, use_jit = 0, use_aot = 0;
+        if (argc < 3) { print_str("Usage: "); print_str(prog); print_str(" run <file.mips> [--trace] [--jit] [--aot] [--arc] [--orc]\n"); return 1; }
+        int trace = 0, use_jit = 0, use_aot = 0, use_arc = 0, use_orc = 0;
         for (int i = 3; i < argc; i++) {
             if (strcmp(argv[i], "--trace") == 0) trace = 1;
             if (strcmp(argv[i], "--jit") == 0) use_jit = 1;
             if (strcmp(argv[i], "--aot") == 0) use_aot = 1;
+            if (strcmp(argv[i], "--arc") == 0) use_arc = 1;
+            if (strcmp(argv[i], "--orc") == 0) use_orc = 1;
         }
-        return cmd_run(argv[2], trace, use_jit, use_aot);
+        return cmd_run(argv[2], trace, use_jit, use_aot, use_arc, use_orc);
     }
     if (strcmp(cmd, "dis") == 0 || strcmp(cmd, "disasm") == 0) {
         if (argc < 3) { print_str("Usage: "); print_str(prog); print_str(" dis <file>\n"); return 1; }

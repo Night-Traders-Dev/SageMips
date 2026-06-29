@@ -176,6 +176,8 @@ void mips_vm_init(MipsVM* vm) {
     vm->write_str = NULL;
     vm->jit = NULL;
     vm->aot = NULL;
+    vm->arc = NULL;
+    vm->orc = NULL;
     vm->orig_code = NULL;
     vm->orig_code_length = 0;
 }

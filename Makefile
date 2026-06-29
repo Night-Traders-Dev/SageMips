@@ -28,7 +28,7 @@ C_SRCS = $(C_SRC_DIR)/mips_encode.c \
          $(C_SRC_DIR)/mips_asm.c \
          $(C_SRC_DIR)/cli.c
 
-# JIT/AOT sources (conditionally compiled)
+# JIT/AOT/ARC/ORC sources (conditionally compiled)
 ifdef JIT
   C_SRCS += $(C_SRC_DIR)/mips_jit.c
   CFLAGS += -DSAGEMIPS_JIT
@@ -36,6 +36,14 @@ endif
 ifdef AOT
   C_SRCS += $(C_SRC_DIR)/mips_aot.c
   CFLAGS += -DSAGEMIPS_AOT
+endif
+ifdef ARC
+  C_SRCS += $(C_SRC_DIR)/mips_arc.c
+  CFLAGS += -DSAGEMIPS_ARC
+endif
+ifdef ORC
+  C_SRCS += $(C_SRC_DIR)/mips_orc.c
+  CFLAGS += -DSAGEMIPS_ORC
 endif
 
 C_OBJS = $(patsubst $(C_SRC_DIR)/%.c,$(BUILD_DIR)/%.o,$(C_SRCS))
