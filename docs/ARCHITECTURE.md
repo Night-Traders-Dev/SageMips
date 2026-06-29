@@ -2,209 +2,272 @@
 
 ## Overview
 
-SageMips is a **freestanding MIPS32 Virtual Machine + Assembler + Compiler** delivered as a single ELF executable. It runs on bare-metal (no OS, no libc) or on hosted Linux. It can execute native MIPS32 assembly, compile Sage to MIPS, and compile C to MIPS using a cross-compiler.
+SageMips is a **dual-backend MIPS32 Virtual Machine + Assembler + Compiler** delivered as a single ELF executable. It provides two independent implementations — a high-performance C backend and a pure Sage backend — sharing the same instruction set, assembler syntax, and binary format.
 
-## Component Architecture
+## Dual-Backend Design
 
 ```
-┌─────────────────────────────────────────────────────┐
-│                   SageMips CLI                       │
-│  (cli.c) — Command dispatcher                        │
-│  run | asm | dis | compile | cc                      │
-├──────────┬──────────┬──────────┬─────────────────────┤
-│ MIPS VM  │ MIPS     │ MIPS     │ Sage/C Compiler     │
-│ (mips_   │ Assembler│ Disasm   │ (external: sage +   │
-│  vm.c)   │ (mips_   │ (mips_   │  gcc-mips)          │
-│          │  asm.c)  │ encode.c)│                     │
-├──────────┴──────────┴──────────┴─────────────────────┤
-│              sagemips.h — Shared types & opcodes      │
-├──────────────────────────────────────────────────────┤
-│  Build: Makefile (hosted + bare-metal)                │
-│  Orchestrator: sagemake (Python)                      │
-└──────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────────────┐
+│                     SageMips Toolchain                              │
+├──────────────────────────────┬──────────────────────────────────────┤
+│       C Backend (src/c/)     │      Sage Backend (src/sage/)        │
+│  ┌────────────────────────┐  │  ┌────────────────────────────────┐  │
+│  │ sagemips.h — Types     │  │  │ mips_core.sage — Opcodes+Types │  │
+│  │ mips_encode.c — Codec  │  │  │   Encode/Decode/Disassembler   │  │
+│  │ mips_vm.c — Interpreter│  │  │ mips_vm.sage — Interpreter     │  │
+│  │ mips_asm.c — Assembler │  │  │   (class-based MipsVM)         │  │
+│  │ cli.c — CLI dispatcher │  │  │ mips_asm.sage — Assembler      │  │
+│  └────────────────────────┘  │  │   (two-pass, tokenizer-based)   │  │
+│  ~6,000 LOC C11              │  │ cli.sage — CLI dispatcher       │  │
+│  gcc/clang compiled          │  │ sagemips_main.sage — Entry      │  │
+│  -ffreestanding capable      │  └────────────────────────────────┘  │
+│  Bare-metal ready            │  ~1,500 LOC Sage                      │
+│                              │  sage --compile compiled              │
+├──────────────────────────────┴──────────────────────────────────────┤
+│                    Shared: opcodes, semantics, tests                  │
+└─────────────────────────────────────────────────────────────────────┘
 ```
 
-## MIPS VM (`src/mips_vm.c`)
+### Why Two Backends?
 
-The VM is a full MIPS32 big-endian interpreter with:
-- **32 General-Purpose Registers** ($zero, $at, $v0–$v1, $a0–$a3, $t0–$t9, $s0–$s7, $k0–$k1, $gp, $sp, $fp, $ra)
-- **HI/LO Special Registers** for multiply/divide results
-- **Memory-Mapped Stack** — 4096 × 32-bit words (16 KB), grows downward from top
-- **Heap** — Simple bump allocator via sbrk syscall (16 MB pool)
-- **String Pool** — Interning string table (256 KB)
-- **Call Stack** — 256-entry deep, stores return address, saved $ra, saved $fp
-- **Syscall Interface** — exit, print_int, print_str, read_int, read_str, sbrk, print_char, read_char, time, halt
-
-### Instruction Support (100+ instructions)
-
-| Category | Instructions |
-|----------|-------------|
-| **Arithmetic** | ADD, ADDU, SUB, SUBU, ADDI, ADDIU, MUL |
-| **Logical** | AND, OR, XOR, NOR, ANDI, ORI, XORI |
-| **Set** | SLT, SLTU, SLTI, SLTIU |
-| **Shift** | SLL, SRL, SRA, SLLV, SRLV, SRAV |
-| **Multiply/Divide** | MULT, MULTU, DIV, DIVU, MFHI, MFLO, MTHI, MTLO |
-| **Branch** | BEQ, BNE, BLEZ, BGTZ, BLTZ, BGEZ, BLTZAL, BGEZAL |
-| **Jump** | J, JAL, JR, JALR |
-| **Load/Store** | LW, SW, LB, LBU, LH, LHU, SB, SH |
-| **Move** | MOVZ, MOVN (conditional moves) |
-| **Trap** | TGE, TGEU, TLT, TLTU, TEQ, TNE |
-| **Special** | LUI, SYSCALL, BREAK, NOP |
-
-### Design Properties
-
-- **Freestanding**: $DB \quad$ When `SAGE_BARE_METAL` is defined, uses no libc — all memset/memcpy/strlen/snprintf are self-contained
-- **Heap-allocated**: On hosted platforms, VM pools are dynamically allocated to avoid stack overflow (VM is ~16 MB)
-- **Big-endian**: Instructions are fetched in MIPS I big-endian byte order
-- **Branch delay slots**: Correctly emulated — the instruction after a branch always executes
+- **C Backend** — Reference implementation. Maximum performance (613 avg MIPS, 1710 peak), bare-metal capable, full POSIX I/O. Use for embedded systems, kernels, OS development.
+- **Sage Backend** — Pure Sage implementation. Self-hosted within the Sage ecosystem, 1/4 the code size, easier to understand and modify. Demonstrates MIPS VM concepts in a high-level language. Ideal for experimentation and learning.
 
 ---
 
-## MIPS Assembler (`src/mips_asm.c`)
+## C Backend (`src/c/`)
 
-Two-pass assembler that converts MIPS32 assembly text to binary machine code.
+### File Structure
 
-### Pass 1 (Label Collection)
-- Scans source, collects all label definitions
-- Validates instruction syntax
-- Tracks code size for address calculation
+| File | Lines | Purpose |
+|------|-------|---------|
+| `sagemips.h` | ~270 | Types, MIPS32 opcodes, VM/assembler structs, API declarations |
+| `mips_encode.c` | ~340 | Instruction encode/decode, register names, disassembler |
+| `mips_vm.c` | ~730 | Full MIPS32 interpreter with syscall interface |
+| `mips_asm.c` | ~550 | Two-pass assembler with directives and pseudo-instructions |
+| `cli.c` | ~350 | CLI dispatcher, file I/O, syscall callbacks |
 
-### Pass 2 (Code Emission)
-- Emits big-endian 4-byte instructions
-- Resolves forward and backward label references
-- Supports pseudo-instruction expansion
+### Key Design Decisions
 
-### Supported Syntax
-
-```
-# Pseudo-instructions
-li    $reg, imm      →  lui + ori sequence
-move  $rd, $rs       →  addu $rd, $rs, $zero
-not   $rd, $rs       →  nor $rd, $rs, $zero
-neg   $rd, $rs       →  sub $rd, $zero, $rs
-nop                   →  sll $zero, $zero, 0
-b     label           →  beq $zero, $zero, label
-la    $reg, label     →  lui + ori with label address
-
-# Directives
-.text                # Code section
-.data                # Data section
-.word   value        # 32-bit data
-.byte   value        # 8-bit data
-.ascii  "string"     # ASCII string
-.asciiz "string"     # Null-terminated ASCII string
-.space  n            # Zero-filled space
-.align  n            # Alignment hint
-.globl  symbol       # Global symbol
+**Freestanding Compatibility**
+```c
+#ifdef SAGE_BARE_METAL
+    // Self-contained libc replacements
+    void* sm_memset(void* s, int c, unsigned long n);
+    void* sm_memcpy(void* d, const void* s, unsigned long n);
+    // ...
+#else
+    #include <string.h>
+    #include <stdio.h>
+    #include <stdlib.h>
+#endif
 ```
 
-### Addressing Modes
-- **Register direct**: `add $t0, $t1, $t2`
-- **Immediate**: `addiu $t0, $t1, 42`
-- **Base+offset**: `lw $t0, 8($sp)`
-- **PC-relative**: `beq $t0, $t1, label`
-- **Absolute**: `j label`, `jal label`
+**Heap-Allocated VM Pools** — The VM state (~16 MB) is heap-allocated to avoid stack overflow:
+```c
+MipsVM* mips_vm_create(void) {
+    MipsVM* vm = malloc(sizeof(MipsVM));
+    vm->stack = malloc(MIPS_STACK_SIZE * sizeof(uint32_t));
+    vm->heap  = malloc(MIPS_HEAP_SIZE);
+    vm->strings = malloc(MIPS_STRING_POOL);
+    // ...
+}
+```
+
+**Syscall Interface** — Wire-able I/O for bare-metal integration:
+```c
+vm->write_char = my_uart_putc;   // UART output
+vm->read_char  = my_uart_getc;   // UART input
+vm->write_str  = my_uart_puts;   // UART string output
+```
+
+**Two-Pass Assembler** — Handles forward references:
+- Pass 0: Collects labels and validates syntax
+- Pass 1: Emits machine code with resolved label addresses
 
 ---
 
-## MIPS Disassembler (`src/mips_encode.c`)
+## Sage Backend (`src/sage/`)
 
-Converts MIPS32 big-endian machine code back to human-readable assembly. Output format:
-```
-0x00000000  0x24020064  addiu $v0, $zero, 100
-0x00000004  0x00432020  add $a0, $v0, $v1
+### File Structure
+
+| File | Lines | Purpose |
+|------|-------|---------|
+| `mips_core.sage` | ~350 | MIPS32 opcodes, `MipsInstr` class, `encode_*` functions, `disasm()` |
+| `mips_vm.sage` | ~390 | `MipsVM` class — full interpreter with `step()`/`run()`/`load()` |
+| `mips_asm.sage` | ~430 | `MipsAsm` class — two-pass assembler with tokenizer |
+| `cli.sage` | ~140 | CLI dispatcher with `dispatch()` entry point |
+| `sagemips_main.sage` | ~15 | Entry point: `import cli; cli.dispatch()` |
+
+### Key Design Decisions
+
+**Class-Based VM**
+```sage
+class MipsVM:
+    proc init(self):
+        self.regs = [0] * 32       # 32 GP registers
+        self.pc = 0
+        self.stack = [0] * 4096    # 16 KB stack
+        self.code = []
+
+    proc step(self):
+        let raw = mips_core.read_be32(self.code, self.pc)
+        let instr = mips_core.MipsInstr(raw)
+        # ... dispatch based on opcode ...
+
+    proc run(self):
+        self.running = true
+        while self.running and not self.error:
+            self.step()
 ```
 
-- Shows address, raw hex, and decoded mnemonic with operands
-- Correctly handles all 6 instruction formats (R, I, J, special R, REGIMM, SPECIAL2)
-- Branch targets shown as absolute addresses
-- Immediate values shown in decimal
+**Token-Based Assembler**
+```sage
+proc tokenize(line):
+    # Splits "addiu $v0, $zero, 42" into:
+    # ["addiu", "$v0", ",", "$zero", ",", "42"]
+    var tokens = []
+    # ... character-by-character tokenizer ...
+    return tokens
+```
+
+**Module Organization** — Each component is a separate Sage module imported via `import`:
+```sage
+import mips_core    # Opcodes, encode/decode, disassembler
+import mips_vm      # VM interpreter
+import mips_asm     # Assembler
+import cli          # CLI dispatcher
+```
+
+### Sage Compiler Considerations
+
+The Sage C backend (`sage --compile`) has several limitations that affect the Sage port:
+
+1. **No short-circuit `and`**: The `and` operator evaluates BOTH operands even when the first is false. This requires guard checks to use `if/break` instead of combined `while` conditions:
+   ```sage
+   # BAD:  while i < len(s) and ord(s[i]) >= 48: ...
+   # GOOD:
+   while i < len(s):
+       if ord(s[i]) < 48: break
+       ...
+   ```
+
+2. **No nested procedures**: Functions defined inside other functions are not supported. All procedures must be at module level.
+
+3. **No ternary operator**: `x if cond else y` must be written as `if/elif/else` blocks.
+
+4. **No single-quoted strings**: All strings must use double quotes. Character comparisons must use `ord()`:
+   ```sage
+   # BAD:  if c == '#':
+   # GOOD: if ord(c) == 35:
+   ```
+
+5. **`io` module limitation**: The `io.readfile()` function works in interpreted mode but may not work in standalone compiled binaries. Use the Sage interpreter (`sage file.sage`) for full I/O functionality.
 
 ---
 
-## CLI (`src/cli.c`)
+## Cross-Backend Compatibility
 
-Single-binary command dispatcher:
+Both backends produce identical MIPS32 binary output. They share:
+- The same opcode encoding/decoding logic
+- The same assembler syntax (labels, pseudo-instructions, directives)
+- The same binary format (big-endian, 4-byte instruction words)
+- The same test expectations
 
-| Command | Description |
-|---------|-------------|
-| `sagemips run <file> [--trace]` | Execute MIPS32 binary |
-| `sagemips asm <file.s> [out]` | Assemble MIPS assembly → binary |
-| `sagemips dis <file>` | Disassemble MIPS binary |
-| `sagemips compile <file.sage>` | Compile Sage → MIPS → run |
-| `sagemips cc <file.c>` | Compile C → MIPS (needs mips-gcc) |
-| `sagemips --help` | Show usage |
-| `sagemips --version` | Show version |
+You can mix and match:
+```bash
+# Assemble with C backend, run with Sage backend
+./sagemips asm examples/mips/hello.s
+./sagemips_sage run hello.mips
+```
 
 ---
 
-## Sage/C Compilation Pipeline
+## Instruction Dispatch (Both Backends)
 
-### Sage → MIPS
+Both backends use the same dispatch strategy — a single large `switch`/`elif` chain decoding the 6-bit opcode field:
+
 ```
-.sage  →  sage --emit-asm --target mips  →  .s  →  sagemips asm  →  .mips  →  sagemips run
+opcode → SPECIAL (R-type)
+        ├── ADD, SUB, AND, OR, XOR, NOR, SLT, SLTU
+        ├── SLL, SRL, SRA, SLLV, SRLV, SRAV
+        ├── JR, JALR, SYSCALL, BREAK
+        ├── MFHI, MTHI, MFLO, MTLO
+        ├── MULT, MULTU, DIV, DIVU
+        └── MOVZ, MOVN, TGE..TNE
+       → SPECIAL2 → MUL
+       → REGIMM → BLTZ, BGEZ, BLTZAL, BGEZAL
+       → J, JAL
+       → BEQ, BNE, BLEZ, BGTZ
+       → ADDI, ADDIU, SLTI, SLTIU, ANDI, ORI, XORI, LUI
+       → LW, SW, LB, LBU, LH, LHU, SB, SH
 ```
 
-### C → MIPS
+### Branch Delay Slots
+
+Both VMs correctly emulate MIPS branch delay slots — the instruction immediately following a branch is always executed before the branch takes effect:
+
+```asm
+    beq   $t0, $t1, target
+    nop              # ← this always executes (delay slot)
 ```
-.c  →  mips-linux-gnu-gcc -nostdlib -march=mips32  →  .mips  →  sagemips run
+
+---
+
+## Binary Format
+
+Both backends emit the same flat binary format:
+
 ```
+┌──────────────────┐  0x0000
+│  .text section    │  MIPS32 instructions (big-endian, 4-byte aligned)
+│  (code)           │
+├──────────────────┤  N bytes
+│  .data section    │  Strings, word data, byte data
+│  (data)           │
+└──────────────────┘  N + M bytes
+```
+
+No ELF headers — just raw MIPS32 machine code. The assembler places `.text` first (at offset 0) followed by `.data`. Labels in the data section are resolved relative to the total code size.
+
+## Syscall Reference
+
+Both VMs share the same syscall interface:
+
+| Number | Name | $a0 | $v0 (return) |
+|--------|------|-----|-------------|
+| 0 | exit | — | — |
+| 1 | print_int | value | — |
+| 2 | print_str | address | — |
+| 3 | read_int | — | value |
+| 4 | read_str | buffer | — |
+| 5 | sbrk | bytes | address |
+| 6 | print_char | char | — |
+| 7 | read_char | — | char |
+| 8 | time | — | seconds |
+| 9 | halt | — | — |
 
 ---
 
 ## Build System
 
-### Makefile Targets
-
-| Target | Description |
-|--------|-------------|
-| `make` | Build hosted SageMips |
-| `make bare` | Build freestanding SageMips (`-ffreestanding -nostdlib`) |
-| `make install` | Install to `/usr/local/bin/sagemips` |
-| `make test` | Run quick smoke tests |
-| `make clean` | Remove build artifacts |
-
-### sagemake (Python Build Orchestrator)
+### Makefile
 
 ```
-python3 sagemake          # Full build pipeline
-python3 sagemake bare     # Bare-metal build
-python3 sagemake install  # Install system-wide
-python3 sagemake test     # Build + run tests
-python3 sagemake clean    # Clean build
+make          → C backend (hosted, gcc/clang)
+make bare     → C backend (freestanding, -nostdlib)
+make sage     → Sage backend (sage --compile)
+make test     → Quick smoke tests
+make install  → Install C backend to /usr/local/bin
 ```
 
----
-
-## Memory Layout (Bare-Metal)
-
-When built with `-DSAGE_BARE_METAL`, the VM uses static memory pools:
+### sagemake (Python orchestrator)
 
 ```
-┌──────────────────────────────┐  0x00000000
-│       Code (up to 2 MB)       │
-├──────────────────────────────┤
-│    Stack (4096 × 32-bit)     │  ← $sp starts at top
-├──────────────────────────────┤
-│    Heap (16 MB bump alloc)   │
-├──────────────────────────────┤
-│    String Pool (256 KB)      │
-├──────────────────────────────┤
-│    VM State (struct)          │  ← Register file, call stack, etc.
-└──────────────────────────────┘
+python3 sagemake --c       → C backend
+python3 sagemake --sage    → Sage backend
+python3 sagemake --bare    → C bare-metal
+python3 sagemake --native  → Emit MIPS asm from Sage source
+python3 sagemake --install → Install
+python3 sagemake --test    → Build + test
 ```
-
-## Syscall Reference
-
-| Number | Name | Args | Returns |
-|--------|------|------|---------|
-| 0 | exit | — | — |
-| 1 | print_int | $a0 = value | — |
-| 2 | print_str | $a0 = address | — |
-| 3 | read_int | — | $v0 = value |
-| 4 | read_str | $a0 = buffer | — |
-| 5 | sbrk | $a0 = bytes | $v0 = address |
-| 6 | print_char | $a0 = char | — |
-| 7 | read_char | — | $v0 = char |
-| 8 | time | — | $v0 = seconds |
-| 9 | halt | — | — |

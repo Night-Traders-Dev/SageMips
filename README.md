@@ -1,16 +1,17 @@
 # SageMips
 
-**Freestanding MIPS32 Virtual Machine + Assembler + Compiler — Single ELF, No libc, Bare-Metal Ready**
+**Dual-Backend MIPS32 Virtual Machine + Assembler + Compiler — Single ELF, No libc, Bare-Metal Ready**
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Version](https://img.shields.io/badge/version-1.0.0-green)](VERSION)
 [![Tests](https://img.shields.io/badge/tests-40%2F40%20passed-brightgreen)](tests/test_results.json)
+[![Backends](https://img.shields.io/badge/backends-C_%2B_Sage-purple)]()
 
 ---
 
 ## Overview
 
-SageMips is a **complete MIPS32 toolchain in a single ELF binary**. It can run native MIPS32 assembly, compile Sage and C to MIPS machine code, and execute it all in a freestanding VM — no operating system, no libc required. Built for bare-metal, OS development, and embedded systems.
+SageMips is a **complete MIPS32 toolchain** available in two backends — a high-performance C implementation and a pure Sage implementation. Both can run native MIPS32 assembly, compile Sage and C to MIPS machine code, and execute it in a freestanding VM — no operating system, no libc required.
 
 ```
 $ sagemips asm hello.s && sagemips run hello.mips --trace
@@ -20,54 +21,75 @@ $ sagemips asm hello.s && sagemips run hello.mips --trace
 0x0000000c  0x0000000c  syscall
 ```
 
+## Dual Backend Architecture
+
+SageMips offers two independent implementations sharing the same tooling interface:
+
+| | **C Backend** (`make`) | **Sage Backend** (`make sage`) |
+|---|---|---|
+| **Source** | `src/c/` (C11, ~6000 LOC) | `src/sage/` (pure Sage, ~1500 LOC) |
+| **Compiler** | gcc/clang | `sage --compile` |
+| **Binary** | `sagemips` (native ELF) | `sagemips_sage` (native ELF) |
+| **Freestanding** | Yes (`-ffreestanding -nostdlib`) | Hosted only |
+| **Bare-metal** | Yes (`make bare`) | No |
+| **Performance** | ~613 MIPS | Sage VM speed |
+| **VM** | Full MIPS32 (100+ instr) | Full MIPS32 (100+ instr) |
+| **Assembler** | Two-pass with directives | Two-pass with pseudo-instructions |
+| **Disassembler** | All formats | All formats |
+| **File I/O** | POSIX | `io` module (hosted) |
+
+### Why Two Backends?
+
+- **C Backend** — The reference implementation. Highest performance, bare-metal capable, full I/O support. Use for embedded systems, kernels, and production workloads.
+- **Sage Backend** — Written in pure Sage, self-hosted within the Sage ecosystem. Demonstrates MIPS VM concepts in a high-level language. Ideal for experimentation, learning, and Sage toolchain development.
+
+Both backends share the same opcode definitions, instruction semantics, and test expectations. The Sage backend builds as a standalone native binary using `sage --compile` or can be run interpreted with `sage src/sage/sagemips_main.sage`.
+
 ## Quick Start
 
 ```bash
 git clone https://github.com/Night-Traders-Dev/SageMips.git
 cd SageMips
+
+# C backend (recommended)
 make
 ./sagemips --help
+
+# Sage backend
+make sage
+./sagemips_sage --help
 ```
 
 ## Commands
 
-| Command | Description |
-|---------|-------------|
-| `sagemips run <file>` | Execute a MIPS32 binary |
-| `sagemips asm <file.s>` | Assemble MIPS assembly → binary |
-| `sagemips dis <file>` | Disassemble MIPS binary |
-| `sagemips compile <file.sage>` | Compile Sage → MIPS |
-| `sagemips cc <file.c>` | Compile C → MIPS (needs mips-gcc) |
+| Command | C Backend | Sage Backend |
+|---------|-----------|--------------|
+| `sagemips run <file>` | Execute MIPS32 binary | Execute MIPS32 binary |
+| `sagemips asm <file.s>` | Assemble MIPS → binary | Assemble MIPS → binary |
+| `sagemips dis <file>` | Disassemble MIPS binary | Disassemble MIPS binary |
+| `sagemips compile <file.sage>` | Sage → MIPS (via host sage) | (host only) |
+| `sagemips cc <file.c>` | C → MIPS (via mips-gcc) | — |
 
 ## Architecture
 
 ```
-┌──────────────────────────────────────────────────────────┐
-│                    sagemips (single ELF)                   │
-├────────────┬────────────┬────────────┬────────────────────┤
-│  MIPS32 VM │  Assembler │ Disasm     │ Sage/C Compiler     │
-│  100+ instr│  2-pass    │ all formats│ (external tools)    │
-├────────────┴────────────┴────────────┴────────────────────┤
-│              Freestanding C11 — no libc required           │
-└──────────────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────────┐
+│                      sagemips (single ELF)                        │
+├──────────────────────────────────────────────────────────────────┤
+│  Backend:  C (src/c/)           │  Backend:  Sage (src/sage/)     │
+│  ┌──────────┬──────────┬──────┐ │  ┌──────────┬──────────┬──────┐ │
+│  │ MIPS VM  │ Assembler│ Dis  │ │  │ MIPS VM  │ Assembler│ Dis  │ │
+│  │ 100+ ins │ 2-pass   │ all  │ │  │ 100+ ins │ 2-pass   │ all  │ │
+│  └──────────┴──────────┴──────┘ │  └──────────┴──────────┴──────┘ │
+│  Bare-metal capable             │  Hosted Sage ecosystem           │
+├──────────────────────────────────────────────────────────────────┤
+│              Shared: opcodes, semantics, tests, examples           │
+└──────────────────────────────────────────────────────────────────┘
 ```
-
-### Supported MIPS32 Instructions (100+)
-
-**Arithmetic:** `ADD, ADDU, SUB, SUBU, ADDI, ADDIU, MUL`  
-**Logical:** `AND, OR, XOR, NOR, ANDI, ORI, XORI`  
-**Set:** `SLT, SLTU, SLTI, SLTIU`  
-**Shift:** `SLL, SRL, SRA, SLLV, SRLV, SRAV`  
-**Mul/Div:** `MULT, MULTU, DIV, DIVU, MFHI, MFLO, MTHI, MTLO`  
-**Branch:** `BEQ, BNE, BLEZ, BGTZ, BLTZ, BGEZ, BLTZAL, BGEZAL`  
-**Jump:** `J, JAL, JR, JALR`  
-**Memory:** `LW, SW, LB, LBU, LH, LHU, SB, SH`  
-**Move:** `MOVZ, MOVN` · **Trap:** `TGE, TGEU, TLT, TLTU, TEQ, TNE`  
-**Special:** `LUI, SYSCALL, BREAK`
 
 ## Performance
 
-Benchmarks run on a single core, hosted Linux x86-64. Results in **millions of instructions per second (MIPS)**:
+Benchmarks from the C backend on a single core, hosted Linux x86-64. Results in **millions of instructions per second (MIPS)**:
 
 ```
 MIXED ALU  ██████████████████████████████████████████████████▎ 1710
@@ -100,37 +122,59 @@ PRIME SIEVE ▌                                                    1
 
 **Aggregate:** 6.3M instructions in 14ms = **613 average MIPS**
 
-### Instruction Latency
-
-```
-addu  ▏ 0.6 ns/instr
-sll   ▏ 0.7 ns/instr
-add   ▏ 1.0 ns/instr
-and   ▏ 1.0 ns/instr
-or    ▏ 1.0 ns/instr
-xor   ▏ 1.0 ns/instr
-mul   ▏ 1.8 ns/instr
-lw    ▏ 0.9 ns/op
-sw    ▏ 0.9 ns/op
-beq   ▏ 5.0 ns (taken)
-div   ▏ 12.9 ns/instr
-```
-
 ## Build
 
 ```bash
-make              # Hosted Linux binary (default)
+# C backend (default)
+make              # Hosted binary
 make bare         # Freestanding (-ffreestanding -nostdlib)
-make test         # Run test suite
-make install      # Install to /usr/local/bin
+
+# Sage backend
+make sage         # Compile with sage --compile
+
+# Build orchestrator
+python3 sagemake --c            # C backend
+python3 sagemake --sage         # Sage backend
+python3 sagemake --bare         # Bare-metal C backend
+python3 sagemake --install      # Install to /usr/local/bin
+python3 sagemake --test         # Build + run tests
 ```
 
-Or use the Python build orchestrator:
-```bash
-python3 sagemake            # Full build pipeline
-python3 sagemake bare       # Bare-metal build
-python3 sagemake install    # Install system-wide
-```
+## C Backend vs Sage Backend
+
+### C Backend (`src/c/`)
+
+The C backend is the **reference implementation** optimized for performance and bare-metal deployment. Key characteristics:
+
+- **~6,000 lines of C11** across 5 files (`sagemips.h`, `mips_encode.c`, `mips_vm.c`, `mips_asm.c`, `cli.c`)
+- **Full MIPS32 ISA**: 100+ instructions including all R/I/J types, multiply/divide, load/store byte/half/word, traps, conditional moves
+- **Two-pass assembler**: Full GNU-as-compatible syntax with labels, pseudo-instructions (`li`, `move`, `la`, `nop`, `not`, `neg`, `b`), directives (`.text`, `.data`, `.word`, `.byte`, `.ascii`, `.asciiz`, `.space`, `.globl`), and escape sequences (`\n`, `\t`, `\r`, `\\`, `\"`)
+- **Disassembler**: All 6 MIPS instruction formats with address/hex/mnemonic output
+- **Freestanding mode**: `make bare` compiles with `-ffreestanding -nostdlib -DSAGE_BARE_METAL` providing self-contained `memset`, `memcpy`, `memcmp`, `strlen`, `strcmp`, `strcpy`, `strncpy`, `snprintf`
+- **Heap-allocated VM pools**: 16KB stack, 16MB heap, 256KB string pool — avoids stack overflow
+- **Syscall interface**: Wire-able I/O callbacks for bare-metal integration (`write_char`, `read_char`, `write_str`)
+- **613 avg MIPS** on benchmark suite, peaking at **1,710 MIPS** on mixed ALU operations
+
+### Sage Backend (`src/sage/`)
+
+The Sage backend is a **pure Sage implementation** demonstrating MIPS VM concepts in Sage itself. Key characteristics:
+
+- **~1,500 lines of Sage** across 5 files (`mips_core.sage`, `mips_vm.sage`, `mips_asm.sage`, `cli.sage`, `sagemips_main.sage`)
+- **Full MIPS32 ISA**: Same 100+ instruction coverage as the C backend
+- **Two-pass assembler**: Handles pseudo-instructions (`nop`, `move`, `not`, `neg`, `li`, `la`, `b`) and labels, with a simpler tokenizer-based parser
+- **Disassembler**: All MIPS instruction formats with full mnemonic and operand output
+- **Class-based VM**: Uses Sage's OOP system — `MipsVM` class with `step()`, `run()`, `load()` methods and `MipsInstr` for decoded instructions
+- **Compatible**: Shares the same opcode definitions and instruction semantics as the C backend
+- **Educational**: Significantly less code (1/4 the size), easier to read and modify, demonstrates Sage's capabilities as a systems language
+- **Limitations**: File I/O (`io` module) requires the Sage interpreter; the compiled binary cannot read files in standalone mode. Use `sage src/sage/sagemips_main.sage` for full functionality including file operations.
+
+### Cross-Backend Compatibility
+
+Both backends produce identical MIPS32 binary output — you can:
+1. Write MIPS assembly in either assembler
+2. Run the resulting binary on either VM
+3. Disassemble with either disassembler
+4. Get the same results
 
 ## Test Suite
 
@@ -150,59 +194,50 @@ python3 sagemake install    # Install system-wide
 
 Run: `python3 tests/run_tests.py`
 
-## Sage + C Compilation
-
-```bash
-# Sage → MIPS
-sagemips compile program.sage   # Uses sage --emit-asm --target mips + assembler
-
-# C → MIPS (requires mips-linux-gnu-gcc)
-sagemips cc program.c
-```
-
-## Bare-Metal / Freestanding
-
-Build without libc for kernel/embedded use:
-```bash
-make bare   # -ffreestanding -nostdlib -DSAGE_BARE_METAL
-```
-
-The `_start()` entry point provides a complete freestanding runtime:
-- Custom `memset`, `memcpy`, `memcmp`, `strlen`, `strcmp`, `strcpy`, `strncpy`, `snprintf`
-- Fixed-size static memory pools (stack 16KB, heap 16MB, strings 256KB)
-- Syscall interface via function callbacks for I/O
-
 ## Project Structure
 
 ```
 src/
-├── sagemips.h      # Types, opcodes, VM structs, API
-├── mips_vm.c       # MIPS32 interpreter (100+ instructions)
-├── mips_asm.c      # Two-pass assembler
-├── mips_encode.c   # Encode/decode + disassembler
-└── cli.c           # CLI dispatcher
+├── c/                  # C backend (reference implementation)
+│   ├── sagemips.h      # Types, opcodes, VM structs, API
+│   ├── mips_encode.c   # Encode/decode + disassembler
+│   ├── mips_vm.c       # MIPS32 interpreter (6000+ LOC total)
+│   ├── mips_asm.c      # Two-pass assembler
+│   └── cli.c           # CLI dispatcher
+└── sage/               # Sage backend (pure Sage port)
+    ├── mips_core.sage   # Opcodes, encode/decode, disassembler
+    ├── mips_vm.sage     # MIPS32 interpreter (class-based)
+    ├── mips_asm.sage    # Two-pass assembler
+    ├── cli.sage         # CLI dispatcher
+    └── sagemips_main.sage  # Entry point
+
+examples/
+├── mips/               # MIPS32 assembly examples (8 examples)
+├── sage/               # Sage source examples (5 examples)
+├── c/                  # Freestanding C examples (4 examples)
+└── README.md
 
 docs/
-├── ARCHITECTURE.md  # Full architecture overview
-├── VM_ISA.md        # Instruction set reference
-├── ASSEMBLER.md     # Assembler syntax reference
-└── BUILD.md         # Build & install guide
+├── ARCHITECTURE.md      # Full architecture overview
+├── VM_ISA.md            # Instruction set reference
+├── ASSEMBLER.md         # Assembler syntax reference
+└── BUILD.md             # Build & install guide
 
 tests/
-├── run_tests.py     # Comprehensive test suite (40 tests)
+├── run_tests.py          # Comprehensive test suite (40 tests)
 └── test_results.json
 
 benchmarks/
-├── run_bench.py      # Performance benchmark suite
+├── run_bench.py           # Performance benchmark suite
 └── benchmark_results.json
 ```
 
 ## Documentation
 
-- [Architecture Overview](docs/ARCHITECTURE.md) — Component design, memory layout, compilation pipeline
+- [Architecture Overview](docs/ARCHITECTURE.md) — Component design, dual-backend architecture, memory layout, compilation pipeline
 - [VM & ISA Reference](docs/VM_ISA.md) — Complete MIPS32 instruction set, registers, syscalls
-- [Assembler Reference](docs/ASSEMBLER.md) — Syntax, pseudo-instructions, directives
-- [Build Guide](docs/BUILD.md) — Prerequisites, targets, cross-compilation
+- [Assembler Reference](docs/ASSEMBLER.md) — Syntax, pseudo-instructions, directives, cross-backend compatibility
+- [Build Guide](docs/BUILD.md) — Prerequisites, C/Sage build targets, cross-compilation
 
 ## License
 

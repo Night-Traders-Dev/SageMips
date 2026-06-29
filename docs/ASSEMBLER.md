@@ -1,5 +1,7 @@
 # SageMips Assembler Reference
 
+> Both the C backend (`src/c/mips_asm.c`) and Sage backend (`src/sage/mips_asm.sage`) implement compatible two-pass assemblers. This reference applies to both.
+
 ## Quick Start
 
 ```bash
