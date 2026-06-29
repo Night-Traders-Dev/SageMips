@@ -127,15 +127,16 @@ static void vm_write_char_cb(char c) {
 static void usage(const char* prog) {
     print_str("SageMips - MIPS32 VM + Assembler + Compiler\n");
     print_str("Usage:\n");
-    print_str("  "); print_str(prog); print_str(" run     <file>          Run MIPS binary (.mips/.bin)\n");
-    print_str("  "); print_str(prog); print_str(" asm     <file.s> [out]   Assemble MIPS assembly to binary\n");
+    print_str("  "); print_str(prog); print_str(" run     <file.mips>     Run MIPS binary\n");
+    print_str("  "); print_str(prog); print_str(" asm     <file.s> [-o out] Assemble MIPS assembly\n");
     print_str("  "); print_str(prog); print_str(" dis     <file>          Disassemble MIPS binary\n");
-    print_str("  "); print_str(prog); print_str(" compile <file.sage>      Compile Sage -> MIPS binary\n");
-    print_str("  "); print_str(prog); print_str(" emit    <file.sage>      Emit MIPS assembly from Sage (no binary)\n");
-    print_str("  "); print_str(prog); print_str(" cc      <file.c>         Compile C -> MIPS binary\n");
-    print_str("  Flags:\n");
-    print_str("    --save-asm            Save intermediate MIPS assembly (.s file)\n");
-    print_str("    --trace               Show VM instruction trace with run\n");
+    print_str("  "); print_str(prog); print_str(" emit    <file.sage> [-o out.s]  Emit MIPS assembly\n");
+    print_str("  "); print_str(prog); print_str(" compile <file.sage> [-o out.s]  Compile Sage -> MIPS\n");
+    print_str("  "); print_str(prog); print_str(" cc      <file.c>        Compile C -> MIPS binary\n");
+    print_str("  Common flags:\n");
+    print_str("    -o <file>             Output file path\n");
+    print_str("    --save-asm            Save intermediate assembly\n");
+    print_str("    --trace               Show VM instruction trace\n");
     print_str("  "); print_str(prog); print_str(" --help                 Show this help\n");
     print_str("  "); print_str(prog); print_str(" --version              Show version\n");
 }
@@ -192,9 +193,52 @@ static int write_file(const char* path, const uint8_t* data, uint32_t len) {
 
 static int cmd_run(const char* path, int trace) {
 #ifndef SAGE_BARE_METAL
+    // Check file extension for common mistakes
+    const char* ext = strrchr(path, '.');
+    if (ext) {
+        if (strcmp(ext, ".sage") == 0) {
+            print_str("Error: cannot run .sage source directly\n");
+            print_str("  First compile: sagemips emit ");
+            print_str(path);
+            print_str("\n  Then assemble:  sagemips asm <file.s>\n");
+            print_str("  Then run:      sagemips run <file.mips>\n");
+            return 1;
+        }
+        if (strcmp(ext, ".s") == 0 || strcmp(ext, ".asm") == 0) {
+            print_str("Error: cannot run assembly source directly\n");
+            print_str("  First assemble: sagemips asm ");
+            print_str(path);
+            print_str("\n  Then run:      sagemips run <file.mips>\n");
+            return 1;
+        }
+        if (strcmp(ext, ".c") == 0) {
+            print_str("Error: cannot run C source directly\n");
+            print_str("  First compile: sagemips cc ");
+            print_str(path);
+            print_str("\n  Then run:      sagemips run <file.mips>\n");
+            return 1;
+        }
+    }
+
     uint32_t len;
     uint8_t* code = read_file(path, &len);
     if (!code) { print_str("Error: cannot read file\n"); return 1; }
+
+    // Sanity check: if file looks like text, warn
+    if (len >= 4) {
+        int is_text = 1;
+        for (uint32_t i = 0; i < (len < 256 ? len : 256); i++) {
+            if (code[i] == 0) { is_text = 0; break; }  // binary has nulls
+        }
+        if (is_text && (code[0] == '.' || code[0] == '#' || code[0] == '/' || code[0] == ';')) {
+            print_str("Error: file appears to be assembly source, not a MIPS binary\n");
+            print_str("  Assemble first: sagemips asm ");
+            print_str(path);
+            print_str(" -o <output.mips>\n");
+            free(code);
+            return 1;
+        }
+    }
 
     MipsVM* vm = mips_vm_create();
     if (!vm) { free(code); print_str("Error: failed to create VM\n"); return 1; }
@@ -298,33 +342,42 @@ static int cmd_assemble(const char* input, const char* output) {
 #endif
 }
 
-static int cmd_compile_sage(const char* input, int save_asm) {
+static int cmd_compile_sage(const char* input, const char* output_asm, int save_asm_only) {
 #ifndef SAGE_BARE_METAL
-    char out_buf[256];
-    const char* base = input;
-    const char* ext = strrchr(base, '.');
-    int base_len = ext ? (int)(ext - base) : (int)strlen(base);
+    // Validate input is a .sage file
+    const char* ext = strrchr(input, '.');
+    if (!ext || (strcmp(ext, ".sage") != 0)) {
+        print_str("Error: input must be a .sage file\n");
+        print_str("  For .s files, use: sagemips asm <file.s>\n");
+        print_str("  For .mips files, use: sagemips run <file.mips>\n");
+        return 1;
+    }
 
-    // Build output paths
-    memcpy(out_buf, base, base_len);
-    if (save_asm) {
-        // Use local .s file instead of /tmp
+    char out_buf[256];
+    if (output_asm) {
+        // Use explicit output path
+        int out_len = (int)strlen(output_asm);
+        if (out_len >= 254) return 1;
+        memcpy(out_buf, output_asm, out_len + 1);
+    } else if (save_asm_only) {
+        // Auto-generate: replace .sage with .s in same directory
+        const char* base = input;
+        int base_len = (int)(ext - base);
+        memcpy(out_buf, base, base_len);
         memcpy(out_buf + base_len, ".s", 3);
+        out_buf[base_len + 2] = '\0';
     } else {
         // Temporary file in /tmp
         memcpy(out_buf, "/tmp/sagemips_asm_", 18);
-        // Append a short hash of the input path
-        const char* bn = base;
+        const char* bn = input;
         const char* sl = strrchr(bn, '/');
         if (sl) bn = sl + 1;
-        memcpy(out_buf + 18, bn, base_len - (bn - base));
-        memcpy(out_buf + 18 + (base_len - (bn - base)), ".s", 3);
-        out_buf[18 + (base_len - (bn - base)) + 3] = '\0';
-        goto emit_asm;
+        int bn_len = (int)(ext - bn);
+        memcpy(out_buf + 18, bn, bn_len);
+        memcpy(out_buf + 18 + bn_len, ".s", 3);
+        out_buf[18 + bn_len + 3] = '\0';
     }
-    out_buf[base_len + 2] = '\0';
 
-emit_asm:
     char cmd[512];
     snprintf(cmd, sizeof(cmd),
              "sage --emit-asm \"%s\" --target mips -o \"%s\" 2>&1",
@@ -339,15 +392,21 @@ emit_asm:
     print_str(out_buf);
     print_str("\n");
 
-    if (save_asm) {
-        // Stop here — user only wanted assembly
+    if (save_asm_only) {
         return 0;
     }
 
     print_str("Assembling MIPS -> binary...\n");
-    return cmd_assemble(out_buf, NULL);
+    ret = cmd_assemble(out_buf, NULL);
+    if (ret != 0) {
+        print_str("  Note: Sage-generated asm uses GNU-as syntax.\n");
+        print_str("  Assemble externally: mips-linux-gnu-as ");
+        print_str(out_buf);
+        print_str(" -o output.o\n");
+    }
+    return ret;
 #else
-    (void)input; (void)save_asm;
+    (void)input; (void)output_asm; (void)save_asm_only;
     return 1;
 #endif
 }
@@ -439,9 +498,11 @@ int main(int argc, char** argv) {
         return 0;
     }
     if (strcmp(cmd, "run") == 0) {
-        if (argc < 3) { print_str("Usage: "); print_str(prog); print_str(" run <file> [--trace]\n"); return 1; }
+        if (argc < 3) { print_str("Usage: "); print_str(prog); print_str(" run <file.mips> [--trace]\n"); return 1; }
         int trace = 0;
-        if (argc > 3 && strcmp(argv[3], "--trace") == 0) trace = 1;
+        for (int i = 3; i < argc; i++) {
+            if (strcmp(argv[i], "--trace") == 0) trace = 1;
+        }
         return cmd_run(argv[2], trace);
     }
     if (strcmp(cmd, "dis") == 0 || strcmp(cmd, "disasm") == 0) {
@@ -449,20 +510,29 @@ int main(int argc, char** argv) {
         return cmd_disassemble(argv[2]);
     }
     if (strcmp(cmd, "asm") == 0 || strcmp(cmd, "assemble") == 0) {
-        if (argc < 3) { print_str("Usage: "); print_str(prog); print_str(" asm <file.s> [output]\n"); return 1; }
-        return cmd_assemble(argv[2], argc > 3 ? argv[3] : NULL);
+        if (argc < 3) { print_str("Usage: "); print_str(prog); print_str(" asm <file.s> [-o <out>]\n"); return 1; }
+        const char* out = NULL;
+        for (int i = 3; i < argc - 1; i++) {
+            if (strcmp(argv[i], "-o") == 0) { out = argv[i + 1]; break; }
+        }
+        return cmd_assemble(argv[2], out);
     }
     if (strcmp(cmd, "compile") == 0 || strcmp(cmd, "emit") == 0) {
-        if (argc < 3) { print_str("Usage: "); print_str(prog); print_str(" compile <file.sage>\n"); return 1; }
-        int save_asm = 0;
-        // 'emit' always saves assembly; 'compile' needs --save-asm
-        if (strcmp(cmd, "emit") == 0) save_asm = 1;
-        if (argc > 3 && strcmp(argv[3], "--save-asm") == 0) save_asm = 1;
-        return cmd_compile_sage(argv[2], save_asm);
+        if (argc < 3) { print_str("Usage: "); print_str(prog); print_str(" "); print_str(cmd); print_str(" <file.sage> [-o <out.s>] [--save-asm]\n"); return 1; }
+        int save_asm = (strcmp(cmd, "emit") == 0);
+        const char* out = NULL;
+        for (int i = 3; i < argc - 1; i++) {
+            if (strcmp(argv[i], "-o") == 0) { out = argv[i + 1]; break; }
+            if (strcmp(argv[i], "--save-asm") == 0) save_asm = 1;
+        }
+        return cmd_compile_sage(argv[2], out, save_asm);
     }
     if (strcmp(cmd, "cc") == 0) {
-        if (argc < 3) { print_str("Usage: "); print_str(prog); print_str(" cc <file.c> [--save-asm]\n"); return 1; }
-        int save_asm = (argc > 3 && strcmp(argv[3], "--save-asm") == 0);
+        if (argc < 3) { print_str("Usage: "); print_str(prog); print_str(" cc <file.c> [-o <out>] [--save-asm]\n"); return 1; }
+        int save_asm = 0;
+        for (int i = 3; i < argc; i++) {
+            if (strcmp(argv[i], "--save-asm") == 0) save_asm = 1;
+        }
         return cmd_compile_c(argv[2], save_asm);
     }
 
