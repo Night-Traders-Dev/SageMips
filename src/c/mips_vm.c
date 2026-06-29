@@ -174,6 +174,10 @@ void mips_vm_init(MipsVM* vm) {
     vm->write_char = NULL;
     vm->read_char = NULL;
     vm->write_str = NULL;
+    vm->jit = NULL;
+    vm->aot = NULL;
+    vm->orig_code = NULL;
+    vm->orig_code_length = 0;
 }
 
 int mips_vm_load(MipsVM* vm, const uint8_t* code, uint32_t len) {

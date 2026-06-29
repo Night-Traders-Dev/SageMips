@@ -133,10 +133,11 @@ static void usage(const char* prog) {
     print_str("  "); print_str(prog); print_str(" emit    <file.sage> [-o out.s]  Emit MIPS assembly\n");
     print_str("  "); print_str(prog); print_str(" compile <file.sage> [-o out.s]  Compile Sage -> MIPS\n");
     print_str("  "); print_str(prog); print_str(" cc      <file.c>        Compile C -> MIPS binary\n");
-    print_str("  Common flags:\n");
-    print_str("    -o <file>             Output file path\n");
-    print_str("    --save-asm            Save intermediate assembly\n");
+    print_str("  Optimizations:\n");
+    print_str("    --jit                 Enable JIT (instruction cache + basic blocks)\n");
+    print_str("    --aot                 Enable AOT (NOP elimination, const fold, branch opt)\n");
     print_str("    --trace               Show VM instruction trace\n");
+    print_str("    -o <file>             Output file path\n");
     print_str("  "); print_str(prog); print_str(" --help                 Show this help\n");
     print_str("  "); print_str(prog); print_str(" --version              Show version\n");
 }
@@ -191,7 +192,7 @@ static int write_file(const char* path, const uint8_t* data, uint32_t len) {
 // Handle Commands
 // ============================================================================
 
-static int cmd_run(const char* path, int trace) {
+static int cmd_run(const char* path, int trace, int use_jit, int use_aot) {
 #ifndef SAGE_BARE_METAL
     // Check file extension for common mistakes
     const char* ext = strrchr(path, '.');
@@ -224,11 +225,11 @@ static int cmd_run(const char* path, int trace) {
     uint8_t* code = read_file(path, &len);
     if (!code) { print_str("Error: cannot read file\n"); return 1; }
 
-    // Sanity check: if file looks like text, warn
+    // Sanity check
     if (len >= 4) {
         int is_text = 1;
         for (uint32_t i = 0; i < (len < 256 ? len : 256); i++) {
-            if (code[i] == 0) { is_text = 0; break; }  // binary has nulls
+            if (code[i] == 0) { is_text = 0; break; }
         }
         if (is_text && (code[0] == '.' || code[0] == '#' || code[0] == '/' || code[0] == ';')) {
             print_str("Error: file appears to be assembly source, not a MIPS binary\n");
@@ -243,16 +244,49 @@ static int cmd_run(const char* path, int trace) {
     MipsVM* vm = mips_vm_create();
     if (!vm) { free(code); print_str("Error: failed to create VM\n"); return 1; }
     vm->trace = trace;
-#ifndef SAGE_BARE_METAL
     vm->write_str = vm_write_str_cb;
     vm->write_char = vm_write_char_cb;
-#endif
 
-    if (mips_vm_load(vm, code, len) < 0) {
-        print_str("Error: failed to load binary\n");
-        free(code);
-        mips_vm_destroy(vm);
-        return 1;
+    // AOT optimization — pre-process code before loading
+    MipsAOTState aot_state;
+    MipsAOTState* aot_ptr = NULL;
+    if (use_aot) {
+        mips_aot_init(&aot_state);
+        int aot_len = mips_aot_optimize(&aot_state, code, len);
+        print_str("AOT: ");
+        print_int(aot_len);
+        print_str(" bytes optimized (");
+        print_int((int)aot_state.nops_removed);
+        print_str(" NOPs, ");
+        print_int((int)aot_state.consts_folded);
+        print_str(" consts, ");
+        print_int((int)aot_state.branches_optimized);
+        print_str(" branches, ");
+        print_int((int)aot_state.dead_removed);
+        print_str(" dead)\n");
+
+        vm->aot = &aot_state;
+        vm->orig_code = code;
+        vm->orig_code_length = len;
+        // Use optimized code
+        mips_vm_load(vm, aot_state.opt_code, (uint32_t)aot_len);
+    } else {
+        mips_vm_load(vm, code, len);
+    }
+
+    // JIT warmup
+    MipsJITState jit_state;
+    if (use_jit) {
+        mips_jit_init(&jit_state, vm);
+        mips_jit_warmup(&jit_state, vm);
+        vm->jit = &jit_state;
+        int cache_entries, bb_count;
+        mips_jit_stats(&jit_state, &cache_entries, &bb_count);
+        print_str("JIT: ");
+        print_int(cache_entries);
+        print_str(" cached instructions, ");
+        print_int(bb_count);
+        print_str(" basic blocks\n");
     }
 
     int ret = mips_vm_run(vm);
@@ -261,11 +295,23 @@ static int cmd_run(const char* path, int trace) {
         print_str(vm->error_msg ? vm->error_msg : "unknown");
         print_str("\n");
     }
+
+    // JIT stats on exit
+    if (use_jit && vm->jit) {
+        int entries, bbs;
+        mips_jit_stats(vm->jit, &entries, &bbs);
+        print_str("JIT stats: ");
+        print_int(entries);
+        print_str(" cache entries, ");
+        print_int(bbs);
+        print_str(" BBs\n");
+    }
+
     free(code);
     mips_vm_destroy(vm);
     return ret;
 #else
-    (void)path; (void)trace;
+    (void)path; (void)trace; (void)use_jit; (void)use_aot;
     return 1;
 #endif
 }
@@ -581,12 +627,14 @@ int main(int argc, char** argv) {
         return 0;
     }
     if (strcmp(cmd, "run") == 0) {
-        if (argc < 3) { print_str("Usage: "); print_str(prog); print_str(" run <file.mips> [--trace]\n"); return 1; }
-        int trace = 0;
+        if (argc < 3) { print_str("Usage: "); print_str(prog); print_str(" run <file.mips> [--trace] [--jit] [--aot]\n"); return 1; }
+        int trace = 0, use_jit = 0, use_aot = 0;
         for (int i = 3; i < argc; i++) {
             if (strcmp(argv[i], "--trace") == 0) trace = 1;
+            if (strcmp(argv[i], "--jit") == 0) use_jit = 1;
+            if (strcmp(argv[i], "--aot") == 0) use_aot = 1;
         }
-        return cmd_run(argv[2], trace);
+        return cmd_run(argv[2], trace, use_jit, use_aot);
     }
     if (strcmp(cmd, "dis") == 0 || strcmp(cmd, "disasm") == 0) {
         if (argc < 3) { print_str("Usage: "); print_str(prog); print_str(" dis <file>\n"); return 1; }

@@ -245,6 +245,12 @@ typedef struct {
 
     // Flag: owns dynamic memory (should free on destroy)
     int owns_memory;
+
+    // JIT/AOT optimization state (opaque — use void* to avoid circular deps)
+    void* jit;           // MipsJITState* when JIT enabled
+    void* aot;           // MipsAOTState* when AOT enabled
+    const uint8_t* orig_code;
+    uint32_t orig_code_length;
 } MipsVM;
 
 // ============================================================================
@@ -263,6 +269,51 @@ typedef struct {
     int      pass;                  // 0=first pass, 1=second pass
     uint32_t origin;                // base address
 } MipsAsmState;
+
+// ============================================================================
+// JIT State — decoded instruction cache + basic block chain
+// ============================================================================
+#define JIT_CACHE_SIZE    65536
+#define JIT_BB_MAX        4096
+
+typedef struct {
+    MipsInstr decoded;
+    uint32_t  addr;
+    uint32_t  next_cache;
+    uint8_t   is_branch;
+    uint8_t   is_target;
+    int32_t   branch_offset;
+} JITCacheEntry;
+
+typedef struct {
+    uint32_t start_addr;
+    uint32_t end_addr;
+    uint32_t hit_count;
+    uint32_t next_bb;
+    uint32_t branch_bb;
+} JITBasicBlock;
+
+typedef struct {
+    JITCacheEntry cache[JIT_CACHE_SIZE];
+    uint32_t      cache_count;
+    JITBasicBlock blocks[JIT_BB_MAX];
+    uint32_t      block_count;
+    uint32_t      hot_threshold;
+    uint32_t      total_steps;
+    int           enabled;
+} MipsJITState;
+
+// ============================================================================
+// AOT Optimizer State
+// ============================================================================
+typedef struct {
+    uint8_t  opt_code[MIPS_CODE_MAX];
+    uint32_t opt_len;
+    uint32_t nops_removed;
+    uint32_t consts_folded;
+    uint32_t branches_optimized;
+    uint32_t dead_removed;
+} MipsAOTState;
 
 // ============================================================================
 // Register Names (declared here, defined in mips_encode.c)
@@ -299,6 +350,15 @@ int  mips_asm_finalize(MipsAsmState* st);
 
 // Disassembler
 int  mips_disasm(char* buf, int buf_sz, uint32_t instr, uint32_t addr);
+
+// AOT Optimizer
+void mips_aot_init(MipsAOTState* aot);
+int  mips_aot_optimize(MipsAOTState* aot, const uint8_t* code, uint32_t len);
+
+// JIT Optimizer
+void mips_jit_init(MipsJITState* jit, MipsVM* vm);
+void mips_jit_warmup(MipsJITState* jit, MipsVM* vm);
+void mips_jit_stats(MipsJITState* jit, int* cache_entries, int* bb_count);
 
 // Utility
 int  mips_reg_from_name(const char* name);

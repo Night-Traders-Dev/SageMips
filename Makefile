@@ -2,14 +2,15 @@
 # SageMips Makefile
 # ============================================================================
 # Dual-backend build: C (src/c/) and Sage (src/sage/)
+# Optimizations: JIT=1 AOT=1 enable runtime optimizations
 #
-#   make                    Build SageMips (C backend, hosted)
-#   make sage               Build SageMips (Sage backend)
-#   make bare               Build C backend (freestanding/bare-metal)
-#   make install            Install to /usr/local/bin
-#   make clean              Remove build artifacts
-#   make test               Run quick tests
-#   make help               Show targets
+#   make                       Build C backend (hosted)
+#   make JIT=1                 Build with JIT support
+#   make AOT=1                 Build with AOT support
+#   make JIT=1 AOT=1           Build with both JIT + AOT
+#   make sage                  Build Sage backend
+#   make bare                  Build C backend (freestanding)
+#   make test                  Run tests
 # ============================================================================
 
 CC       ?= gcc
@@ -22,15 +23,23 @@ BUILD_DIR   = build
 TARGET      = sagemips
 TARGET_SAGE = sagemips_sage
 
-# C source files
 C_SRCS = $(C_SRC_DIR)/mips_encode.c \
          $(C_SRC_DIR)/mips_vm.c \
          $(C_SRC_DIR)/mips_asm.c \
          $(C_SRC_DIR)/cli.c
 
+# JIT/AOT sources (conditionally compiled)
+ifdef JIT
+  C_SRCS += $(C_SRC_DIR)/mips_jit.c
+  CFLAGS += -DSAGEMIPS_JIT
+endif
+ifdef AOT
+  C_SRCS += $(C_SRC_DIR)/mips_aot.c
+  CFLAGS += -DSAGEMIPS_AOT
+endif
+
 C_OBJS = $(patsubst $(C_SRC_DIR)/%.c,$(BUILD_DIR)/%.o,$(C_SRCS))
 
-# Sage source files
 SAGE_SRCS = src/sage/sagemips_main.sage
 SAGE_PATH = src/sage
 
