@@ -26,7 +26,11 @@ TARGET_SAGE = sagemips_sage
 C_SRCS = $(C_SRC_DIR)/mips_encode.c \
          $(C_SRC_DIR)/mips_vm.c \
          $(C_SRC_DIR)/mips_asm.c \
-         $(C_SRC_DIR)/cli.c
+         $(C_SRC_DIR)/cli.c \
+         $(C_SRC_DIR)/sage_rt.c \
+         $(C_SRC_DIR)/mips_elf.c \
+         $(C_SRC_DIR)/mips_dbg.c \
+         $(C_SRC_DIR)/mips_heap.c
 
 # JIT/AOT/ARC/ORC sources (conditionally compiled)
 ifdef JIT

@@ -426,6 +426,58 @@ void mips_orc_stats(MipsORCState* orc, int* cycles, int* collected);
 int  mips_reg_from_name(const char* name);
 const char* mips_reg_name(int reg);
 
+// ELF Loader
+int  mips_elf_load(const uint8_t* elf_data, uint32_t elf_size,
+                   uint8_t* out_code, uint32_t* out_len, uint32_t* entry);
+
+// Debugger
+#define DBG_MAX_BREAKPOINTS 64
+typedef struct MipsDebugger_s {
+    struct { uint32_t addr; int enabled; } bps[DBG_MAX_BREAKPOINTS];
+    int bp_count;
+    int stepping, step_count, running, should_break;
+} MipsDebugger;
+void mips_dbg_init(MipsDebugger* dbg);
+int  mips_dbg_add_bp(MipsDebugger* dbg, uint32_t addr);
+void mips_dbg_del_bp(MipsDebugger* dbg, uint32_t addr);
+int  mips_dbg_check_bp(MipsDebugger* dbg, uint32_t pc);
+void mips_dbg_dump_regs(MipsVM* vm);
+void mips_dbg_dump_stack(MipsVM* vm, int words);
+void mips_dbg_dump_mem(MipsVM* vm, uint32_t addr, int bytes);
+void mips_dbg_show_instr(MipsVM* vm);
+int  mips_dbg_interactive(MipsVM* vm, MipsDebugger* dbg);
+
+// Heap Manager
+void     mips_heap_init(MipsVM* vm);
+uint32_t mips_malloc(MipsVM* vm, uint32_t size);
+void     mips_free(MipsVM* vm, uint32_t ptr);
+
+// COP1 FPU
+typedef struct MipsCOP1State_s {
+    float  f[32];
+    double d[16];
+    int    cond;
+} MipsCOP1State;
+int  mips_cop1_execute(MipsVM* vm, uint32_t raw, MipsCOP1State* cop1);
+int  mips_cop1_branch(MipsVM* vm, uint32_t raw, MipsCOP1State* cop1);
+
+// Sage Runtime Stubs
+void sage_rt_print(MipsVM* vm, uint32_t sp_offset);
+void sage_rt_string(MipsVM* vm, uint32_t dest_offset, const char* str, int len);
+void sage_rt_number(MipsVM* vm, uint32_t dest_offset, double val);
+void sage_rt_add(MipsVM* vm, uint32_t dest, uint32_t a_off, uint32_t b_off);
+void sage_rt_sub(MipsVM* vm, uint32_t dest, uint32_t a_off, uint32_t b_off);
+void sage_rt_mul(MipsVM* vm, uint32_t dest, uint32_t a_off, uint32_t b_off);
+void sage_rt_div(MipsVM* vm, uint32_t dest, uint32_t a_off, uint32_t b_off);
+int  sage_rt_eq(MipsVM* vm,  uint32_t a_off, uint32_t b_off);
+int  sage_rt_get_bool(MipsVM* vm, uint32_t offset);
+
+// Linker
+typedef struct MipsLinker_s MipsLinker;
+void mips_link_init(MipsLinker* link);
+int  mips_link_add_object(MipsLinker* link, const uint8_t* obj_data, uint32_t obj_size, const char* obj_name);
+int  mips_link_finalize(MipsLinker* link, uint8_t* out, uint32_t* out_len);
+
 // Freestanding libc replacements (bare-metal)
 #ifndef SAGE_BARE_METAL
 #include <string.h>

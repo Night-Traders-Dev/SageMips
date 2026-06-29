@@ -133,6 +133,8 @@ static void usage(const char* prog) {
     print_str("  "); print_str(prog); print_str(" emit    <file.sage> [-o out.s]  Emit MIPS assembly\n");
     print_str("  "); print_str(prog); print_str(" compile <file.sage> [-o out.s]  Compile Sage -> MIPS\n");
     print_str("  "); print_str(prog); print_str(" cc      <file.c>        Compile C -> MIPS binary\n");
+    print_str("  "); print_str(prog); print_str(" debug   <file.mips>     Interactive debugger\n");
+    print_str("  "); print_str(prog); print_str(" elf     <file.elf>      Run ELF32 MIPS binary\n");
     print_str("  Optimizations:\n");
     print_str("    --jit                 JIT: instruction cache + basic blocks\n");
     print_str("    --aot                 AOT: NOP elimination, const fold, branch opt\n");
@@ -562,6 +564,57 @@ static int cmd_compile_sage(const char* input, const char* output_asm, int save_
 #endif
 }
 
+// ============================================================================
+// Debugger
+// ============================================================================
+static int cmd_debug(const char* path) {
+#ifndef SAGE_BARE_METAL
+    uint32_t len; uint8_t* code = read_file(path, &len);
+    if (!code) { print_str("Error: cannot read file\n"); return 1; }
+    MipsVM* vm = mips_vm_create();
+    mips_vm_load(vm, code, len);
+    vm->write_str = vm_write_str_cb;
+    vm->write_char = vm_write_char_cb;
+    MipsDebugger dbg; mips_dbg_init(&dbg);
+    vm->running = 1;
+    int running = 1;
+    while (running && vm->running && !vm->halted && !vm->error) {
+        if (mips_dbg_check_bp(&dbg, vm->pc) || (!dbg.stepping && vm->pc == 0)) {
+            if (mips_dbg_interactive(vm, &dbg) == 0) break;
+        }
+        mips_vm_step(vm);
+    }
+    free(code); mips_vm_destroy(vm);
+    return 0;
+#else
+    (void)path; return 1;
+#endif
+}
+
+// ============================================================================
+// ELF Runner
+// ============================================================================
+static int cmd_elf_run(const char* path) {
+#ifndef SAGE_BARE_METAL
+    uint32_t len; uint8_t* elf_data = read_file(path, &len);
+    if (!elf_data) { print_str("Error: cannot read file\n"); return 1; }
+    uint8_t flat[MIPS_CODE_MAX]; uint32_t flat_len=0, entry=0;
+    int ret = mips_elf_load(elf_data, len, flat, &flat_len, &entry);
+    free(elf_data);
+    if (ret<0) { print_str("Error: invalid ELF\n"); return 1; }
+    MipsVM* vm = mips_vm_create();
+    mips_vm_load(vm, flat, flat_len);
+    vm->pc = entry;
+    vm->write_str = vm_write_str_cb;
+    vm->write_char = vm_write_char_cb;
+    ret = mips_vm_run(vm);
+    mips_vm_destroy(vm);
+    return ret;
+#else
+    (void)path; return 1;
+#endif
+}
+
 static int cmd_compile_c(const char* input, int save_asm) {
 #ifndef SAGE_BARE_METAL
     char out_buf[256];
@@ -712,6 +765,14 @@ int main(int argc, char** argv) {
             if (strcmp(argv[i], "--save-asm") == 0) save_asm = 1;
         }
         return cmd_compile_c(argv[2], save_asm);
+    }
+    if (strcmp(cmd, "debug") == 0 || strcmp(cmd, "dbg") == 0) {
+        if (argc < 3) { print_str("Usage: "); print_str(prog); print_str(" debug <file.mips>\n"); return 1; }
+        return cmd_debug(argv[2]);
+    }
+    if (strcmp(cmd, "elf") == 0) {
+        if (argc < 3) { print_str("Usage: "); print_str(prog); print_str(" elf <file.elf>\n"); return 1; }
+        return cmd_elf_run(argv[2]);
     }
 
     print_str("Unknown command: ");
