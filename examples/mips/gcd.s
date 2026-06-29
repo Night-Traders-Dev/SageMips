@@ -1,11 +1,34 @@
 # SageMips Example: GCD (Euclidean Algorithm)
-# GCD(1071, 462) = 21, GCD(252, 105) = 21
 
     .text
     .globl main
 
+main:
+    la    $a0, m1
+    addiu $a1, $zero, 1071
+    addiu $a2, $zero, 462
+    jal   pgcd
+    nop
+    la    $a0, m2
+    addiu $a1, $zero, 252
+    addiu $a2, $zero, 105
+    jal   pgcd
+    nop
+    la    $a0, m3
+    addiu $a1, $zero, 0
+    addiu $a2, $zero, 5
+    jal   pgcd
+    nop
+    la    $a0, m4
+    addiu $a1, $zero, 17
+    addiu $a2, $zero, 0
+    jal   pgcd
+    nop
+    addiu $v0, $zero, 9
+    syscall
+
 gcd:                           # gcd(a0=a, a1=b) -> v0
-    beq   $a1, $zero, done
+    beq   $a1, $zero, gdone
     nop
     div   $a0, $a1
     mfhi  $t0
@@ -13,7 +36,7 @@ gcd:                           # gcd(a0=a, a1=b) -> v0
     move  $a1, $t0
     b     gcd
     nop
-done:
+gdone:
     move  $v0, $a0
     jr    $ra
     nop
@@ -24,55 +47,22 @@ pgcd:                          # print_gcd(msg:a0, a:a1, b:a2)
     sw    $a1, 8($sp)
     sw    $a2, 4($sp)
     sw    $a0, 0($sp)
-
-    addiu $v0, $zero, 2        # print_str(msg)
+    addiu $v0, $zero, 2
     syscall
-
     lw    $a0, 8($sp)
     lw    $a1, 4($sp)
     jal   gcd
     nop
-
     move  $a0, $v0
-    addiu $v0, $zero, 1        # print_int(result)
+    addiu $v0, $zero, 1
     syscall
-
-    addiu $v0, $zero, 6        # newline
+    addiu $v0, $zero, 6
     addiu $a0, $zero, 0x0A
     syscall
-
     lw    $ra, 12($sp)
     addiu $sp, $sp, 16
     jr    $ra
     nop
-
-main:
-    la    $a0, m1
-    addiu $a1, $zero, 1071
-    addiu $a2, $zero, 462
-    jal   pgcd
-    nop
-
-    la    $a0, m2
-    addiu $a1, $zero, 252
-    addiu $a2, $zero, 105
-    jal   pgcd
-    nop
-
-    la    $a0, m3
-    addiu $a1, $zero, 0
-    addiu $a2, $zero, 5
-    jal   pgcd
-    nop
-
-    la    $a0, m4
-    addiu $a1, $zero, 17
-    addiu $a2, $zero, 0
-    jal   pgcd
-    nop
-
-    addiu $v0, $zero, 9        # halt
-    syscall
 
     .data
 m1: .asciiz "GCD(1071,462) = "

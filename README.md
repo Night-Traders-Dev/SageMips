@@ -32,7 +32,7 @@ SageMips offers two independent implementations sharing the same tooling interfa
 | **Binary** | `sagemips` (native ELF) | `sagemips_sage` (native ELF) |
 | **Freestanding** | Yes (`-ffreestanding -nostdlib`) | Hosted only |
 | **Bare-metal** | Yes (`make bare`) | No |
-| **Performance** | ~613 MIPS | Sage VM speed |
+| **Performance** | ~120 MIPS | Sage VM speed |
 | **VM** | Full MIPS32 (100+ instr) | Full MIPS32 (100+ instr) |
 | **Assembler** | Two-pass with directives | Two-pass with pseudo-instructions |
 | **Disassembler** | All formats | All formats |
@@ -92,35 +92,35 @@ make sage
 Benchmarks from the C backend on a single core, hosted Linux x86-64. Results in **millions of instructions per second (MIPS)**:
 
 ```
-MIXED ALU  ██████████████████████████████████████████████████▎ 1710
-SHIFT OPS  █████████████████████████████████████████▌          1375
-MEM R/W    ████████████████████████████████████▊               1051
-INT ARITH  ████████████████████████████████████▌                920
-MULTIPLY   ████████████████████▊                                556
-NESTED LP  ████████▉                                            244
-BRANCHES   █████▌                                               149
-DIVISION   ███                                                  77
-FIBONACCI  █▌                                                   42
-PRIME SIEVE ▌                                                    1
-            └────┬────┴────┬────┴────┬────┴────┬────┴────┬────┘
-            0   400   800  1200  1600  2000
-                        Million Instructions/sec
+MIXED ALU  █████████████████████████████████████████ 281
+SHIFT OPS  █████████████████████████████████████████ 309
+INT ARITH  ███████████████████████████████████       239
+MEM R/W    ███████████████████████▌                  140
+MULTIPLY   ██████████████▍                            96
+NESTED LP  ███████████                                73
+BRANCHES   ████▌                                      30
+DIVISION   ████                                       27
+FIBONACCI  █                                           7
+PRIME SIEVE ▌                                          0.3
+            └────┬────┴────┬────┴────┬────┴────┬────┘
+            0   80   160  240  320  400
+                       Million Instructions/sec
 ```
 
 | Benchmark | Time | MIPS | Instructions |
 |-----------|------|------|-------------|
-| Mixed ALU (10 ops × 100K) | 0.9ms | **1,710** | 1,500,005 |
-| Shift Operations (6 × 100K) | 0.9ms | **1,375** | 1,200,005 |
-| Memory Read/Write (8 × 50K) | 0.7ms | **1,051** | 700,005 |
-| Integer Arithmetic (7 × 100K) | 1.3ms | **920** | 1,200,005 |
-| Multiply (5 × 50K) | 0.9ms | **556** | 500,005 |
-| Nested Loops (200×200) | 3.3ms | **244** | 800,005 |
-| Branch (3 × 50K) | 1.0ms | **149** | 150,005 |
-| Division (2 × 20K) | 3.1ms | **77** | 240,005 |
-| Fibonacci (5000 terms) | 0.9ms | **42** | 40,005 |
-| Prime Counting (n ≤ 500) | 1.0ms | **1.5** | 1,505 |
+| Shift Operations (6 × 100K) | 3.9ms | **309** | 1,200,005 |
+| Mixed ALU (10 ops × 100K) | 5.3ms | **282** | 1,500,005 |
+| Integer Arithmetic (7 × 100K) | 5.0ms | **239** | 1,200,005 |
+| Memory Read/Write (8 × 50K) | 5.0ms | **140** | 700,005 |
+| Multiply (5 × 50K) | 5.2ms | **96** | 500,005 |
+| Nested Loops (200×200) | 11.0ms | **73** | 800,005 |
+| Branch (3 × 50K) | 5.1ms | **30** | 150,005 |
+| Division (2 × 20K) | 9.0ms | **27** | 240,005 |
+| Fibonacci (5000 terms) | 6.0ms | **7** | 40,005 |
+| Prime Counting (n ≤ 500) | 5.0ms | **0.3** | 1,505 |
 
-**Aggregate:** 6.3M instructions in 14ms = **613 average MIPS**
+**Aggregate:** 6.3M instructions in 60.5ms = **120 average MIPS**, peaking at **309 MIPS** on shift ops
 
 ## Build
 
@@ -153,7 +153,7 @@ The C backend is the **reference implementation** optimized for performance and 
 - **Freestanding mode**: `make bare` compiles with `-ffreestanding -nostdlib -DSAGE_BARE_METAL` providing self-contained `memset`, `memcpy`, `memcmp`, `strlen`, `strcmp`, `strcpy`, `strncpy`, `snprintf`
 - **Heap-allocated VM pools**: 16KB stack, 16MB heap, 256KB string pool — avoids stack overflow
 - **Syscall interface**: Wire-able I/O callbacks for bare-metal integration (`write_char`, `read_char`, `write_str`)
-- **613 avg MIPS** on benchmark suite, peaking at **1,710 MIPS** on mixed ALU operations
+- **120 avg MIPS** on benchmark suite, peaking at **309 MIPS** on shift ops
 
 ### Sage Backend (`src/sage/`)
 
@@ -179,7 +179,7 @@ Both backends produce identical MIPS32 binary output — you can:
 ## Test Suite
 
 ```
-40/40 tests passed
+8/8 MIPS examples passing, 5/5 Sage examples compiling, 40/40 unit tests passing
 
 ✓ VM Arithmetic (add, sub, mul, div, and/or/xor, shifts)
 ✓ VM Branches (beq, bne, bgtz, blez, loops)
@@ -190,6 +190,7 @@ Both backends produce identical MIPS32 binary output — you can:
 ✓ Disassembler (roundtrip fidelity)
 ✓ CLI (help, version, error handling)
 ✓ Edge Cases (div zero, forward/backward branch, delay slots, 32-bit immediates)
+✓ Examples: hello, fibonacci, factorial, gcd, primes, bubble_sort, matrix_mul, memcpy
 ```
 
 Run: `python3 tests/run_tests.py`

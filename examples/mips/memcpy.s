@@ -1,8 +1,35 @@
 # SageMips Example: Memory Copy (custom memcpy + strlen)
-# Copies "Copied successfully!" from source to dest buffer
 
     .text
     .globl main
+
+main:
+    la    $a0, source
+    jal   strlen
+    nop
+    move  $s0, $v0
+    la    $a0, dest
+    la    $a1, source
+    move  $a2, $s0
+    jal   memcpy
+    nop
+    la    $t0, dest
+    add   $t0, $t0, $s0
+    sb    $zero, 0($t0)
+    la    $a0, source
+    addiu $v0, $zero, 2
+    syscall
+    addiu $v0, $zero, 6
+    addiu $a0, $zero, 0x0A
+    syscall
+    la    $a0, dest
+    addiu $v0, $zero, 2
+    syscall
+    addiu $v0, $zero, 6
+    addiu $a0, $zero, 0x0A
+    syscall
+    addiu $v0, $zero, 9
+    syscall
 
 memcpy:                        # memcpy(dest:a0, src:a1, n:a2)
     beq   $a2, $zero, mc_ex
@@ -32,40 +59,6 @@ sl_lp:
 sl_ex:
     jr    $ra
     nop
-
-main:
-    la    $a0, source
-    jal   strlen
-    nop
-    move  $s0, $v0
-
-    la    $a0, dest
-    la    $a1, source
-    move  $a2, $s0
-    jal   memcpy
-    nop
-
-    # Null-terminate dest
-    la    $t0, dest
-    add   $t0, $t0, $s0
-    sb    $zero, 0($t0)
-
-    la    $a0, source
-    addiu $v0, $zero, 2
-    syscall
-    addiu $v0, $zero, 6
-    addiu $a0, $zero, 0x0A
-    syscall
-
-    la    $a0, dest
-    addiu $v0, $zero, 2
-    syscall
-    addiu $v0, $zero, 6
-    addiu $a0, $zero, 0x0A
-    syscall
-
-    addiu $v0, $zero, 9
-    syscall
 
     .data
 source: .asciiz "Copied successfully!"

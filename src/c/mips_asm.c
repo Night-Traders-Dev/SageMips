@@ -56,7 +56,7 @@ static int parse_int(const char** p, int* ok) {
 static int parse_token(const char** p, char* buf, int sz) {
     skip_spaces(p);
     int i = 0;
-    while (i < sz - 1 && !is_space(**p) && **p != ',' && **p != '#' && **p != '(' && **p != ')' && **p != ':' && **p != '\0') {
+    while (i < sz - 1 && !is_space(**p) && **p != ',' && **p != '#' && **p != ':' && **p != '\0') {
         buf[i++] = *(*p)++;
     }
     buf[i] = '\0';
