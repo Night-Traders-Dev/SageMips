@@ -342,6 +342,49 @@ static int cmd_assemble(const char* input, const char* output) {
 #endif
 }
 
+static int assemble_with_mips_tools(const char* asm_path) {
+    // Try to assemble MIPS asm -> flat binary using cross-tools
+    char cmd[512];
+    char obj_path[256];
+    char bin_path[256];
+
+    int asm_len = (int)strlen(asm_path);
+    const char* ext = strrchr(asm_path, '.');
+    int base_len = ext ? (int)(ext - asm_path) : asm_len;
+    memcpy(obj_path, asm_path, base_len);
+    memcpy(obj_path + base_len, ".o", 3);
+    obj_path[base_len + 2] = '\0';
+    memcpy(bin_path, asm_path, base_len);
+    memcpy(bin_path + base_len, ".mips", 6);
+    bin_path[base_len + 5] = '\0';
+
+    // Attempt 1: mips-linux-gnu-as -> objcopy (best for simple asm without relocations)
+    snprintf(cmd, sizeof(cmd),
+        "mips-linux-gnu-as -march=mips32 -o \"%s\" \"%s\" 2>/dev/null && "
+        "mips-linux-gnu-objcopy -O binary \"%s\" \"%s\" 2>/dev/null",
+        obj_path, asm_path, obj_path, bin_path);
+    if (system(cmd) == 0) return 0;
+
+    // Attempt 2: as -> ld with unresolved symbols ignored (for Sage-generated code
+    // that references sage_rt_* functions — they become address 0, VM will halt on them)
+    snprintf(cmd, sizeof(cmd),
+        "mips-linux-gnu-as -march=mips32 -o \"%s\" \"%s\" 2>/dev/null && "
+        "mips-linux-gnu-ld -Ttext=0x0 --unresolved-symbols=ignore-all "
+        "-o \"%s.elf\" \"%s\" 2>/dev/null && "
+        "mips-linux-gnu-objcopy -O binary \"%s.elf\" \"%s\" 2>/dev/null",
+        obj_path, asm_path, obj_path, obj_path, bin_path);
+    if (system(cmd) == 0) return 0;
+
+    // Attempt 3: mipsel variant
+    snprintf(cmd, sizeof(cmd),
+        "mipsel-linux-gnu-as -march=mips32 -o \"%s\" \"%s\" 2>/dev/null && "
+        "mipsel-linux-gnu-objcopy -O binary \"%s\" \"%s\" 2>/dev/null",
+        obj_path, asm_path, obj_path, bin_path);
+    if (system(cmd) == 0) return 0;
+
+    return -1;
+}
+
 static int cmd_compile_sage(const char* input, const char* output_asm, int save_asm_only) {
 #ifndef SAGE_BARE_METAL
     // Validate input is a .sage file
@@ -355,19 +398,16 @@ static int cmd_compile_sage(const char* input, const char* output_asm, int save_
 
     char out_buf[256];
     if (output_asm) {
-        // Use explicit output path
         int out_len = (int)strlen(output_asm);
         if (out_len >= 254) return 1;
         memcpy(out_buf, output_asm, out_len + 1);
     } else if (save_asm_only) {
-        // Auto-generate: replace .sage with .s in same directory
         const char* base = input;
         int base_len = (int)(ext - base);
         memcpy(out_buf, base, base_len);
         memcpy(out_buf + base_len, ".s", 3);
         out_buf[base_len + 2] = '\0';
     } else {
-        // Temporary file in /tmp
         memcpy(out_buf, "/tmp/sagemips_asm_", 18);
         const char* bn = input;
         const char* sl = strrchr(bn, '/');
@@ -396,13 +436,33 @@ static int cmd_compile_sage(const char* input, const char* output_asm, int save_
         return 0;
     }
 
+    // Try MIPS cross-assembler first (handles Sage-generated GNU-as syntax)
     print_str("Assembling MIPS -> binary...\n");
+    ret = assemble_with_mips_tools(out_buf);
+    if (ret == 0) {
+        // Build output binary path
+        int asm_len = (int)strlen(out_buf);
+        const char* asm_ext = strrchr(out_buf, '.');
+        int base_len = asm_ext ? (int)(asm_ext - out_buf) : asm_len;
+        char bin_path[256];
+        memcpy(bin_path, out_buf, base_len);
+        memcpy(bin_path + base_len, ".mips", 6);
+        bin_path[base_len + 5] = '\0';
+        print_str("  Binary saved: ");
+        print_str(bin_path);
+        print_str("\n");
+        return 0;
+    }
+
+    // Fall back to our simple assembler (works for hand-written asm)
     ret = cmd_assemble(out_buf, NULL);
     if (ret != 0) {
-        print_str("  Note: Sage-generated asm uses GNU-as syntax.\n");
-        print_str("  Assemble externally: mips-linux-gnu-as ");
-        print_str(out_buf);
-        print_str(" -o output.o\n");
+        print_str("  Note: Sage-generated assembly uses GNU-as syntax (%hi, %lo, .double)\n");
+        print_str("  To assemble, install MIPS cross-tools:\n");
+        print_str("    sudo apt install binutils-mips-linux-gnu\n");
+        print_str("  Then re-run: sagemips compile ");
+        print_str(input);
+        print_str("\n");
     }
     return ret;
 #else
@@ -417,58 +477,81 @@ static int cmd_compile_c(const char* input, int save_asm) {
     char asm_buf[256];
     const char* base = input;
     const char* ext = strrchr(base, '.');
-    int base_len = ext ? (int)(ext - base) : (int)strlen(base);
+    if (!ext || strcmp(ext, ".c") != 0) {
+        print_str("Error: input must be a .c file\n");
+        return 1;
+    }
+
+    int base_len = (int)(ext - base);
     memcpy(out_buf, base, base_len);
     memcpy(out_buf + base_len, ".mips", 6);
     memcpy(asm_buf, base, base_len);
     memcpy(asm_buf + base_len, ".s", 3);
     asm_buf[base_len + 2] = '\0';
 
-    if (save_asm) {
-        // Generate MIPS assembly first
-        char cmd[512];
-        snprintf(cmd, sizeof(cmd),
-                 "mips-linux-gnu-gcc -S -nostdlib -march=mips32 \"%s\" -o \"%s\" 2>&1",
-                 input, asm_buf);
-        print_str("Compiling C -> MIPS asm...\n");
-        int ret = system(cmd);
-        if (ret == 0) {
-            print_str("  Assembly saved: ");
-            print_str(asm_buf);
-            print_str("\n");
+    // Try MIPS cross-compiler with multiple toolchain prefixes
+    const char* prefixes[] = {
+        "mips-linux-gnu-",
+        "mipsel-linux-gnu-",
+        "mips-elf-",
+        "mips64-linux-gnu-",
+        NULL
+    };
 
-            // Now assemble the .s to .mips
-            print_str("Assembling MIPS -> binary...\n");
-            ret = cmd_assemble(asm_buf, out_buf);
-            if (ret == 0) {
-                print_str("  Binary saved: ");
-                print_str(out_buf);
-                print_str("\n");
-            }
-            return ret;
-        } else {
-            print_str("Error: C compilation failed (is a MIPS cross-compiler installed?)\n");
-            print_str("Install: apt install gcc-mips-linux-gnu\n");
-            return 1;
+    int ok = 0;
+    char cmd[512];
+
+    if (save_asm) {
+        // Generate assembly first, then binary
+        for (int i = 0; prefixes[i] && !ok; i++) {
+            snprintf(cmd, sizeof(cmd),
+                "%sgcc -S -nostdlib -march=mips32 \"%s\" -o \"%s\" 2>/dev/null",
+                prefixes[i], input, asm_buf);
+            if (system(cmd) == 0) ok = 1;
         }
+        if (!ok) goto cc_fail;
+
+        print_str("  Assembly saved: ");
+        print_str(asm_buf);
+        print_str("\n");
+
+        // Assemble to binary
+        ok = 0;
+        for (int i = 0; prefixes[i] && !ok; i++) {
+            snprintf(cmd, sizeof(cmd),
+                "%sgcc -nostdlib -march=mips32 \"%s\" -o \"%s\" 2>/dev/null",
+                prefixes[i], asm_buf, out_buf);
+            if (system(cmd) == 0) ok = 1;
+        }
+        if (!ok) goto cc_fail;
+
+        print_str("  Binary saved: ");
+        print_str(out_buf);
+        print_str("\n");
+        return 0;
     } else {
         // Direct binary compilation
-        char cmd[512];
-        snprintf(cmd, sizeof(cmd),
-                 "mips-linux-gnu-gcc -static -nostdlib -march=mips32 \"%s\" -o \"%s\" 2>&1",
-                 input, out_buf);
-        print_str("Compiling C -> MIPS...\n");
-        int ret = system(cmd);
-        if (ret != 0) {
-            print_str("Error: C compilation failed (is a MIPS cross-compiler installed?)\n");
-            print_str("Install: apt install gcc-mips-linux-gnu\n");
-            return 1;
+        for (int i = 0; prefixes[i] && !ok; i++) {
+            snprintf(cmd, sizeof(cmd),
+                "%sgcc -nostdlib -march=mips32 \"%s\" -o \"%s\" 2>/dev/null",
+                prefixes[i], input, out_buf);
+            if (system(cmd) == 0) ok = 1;
         }
+        if (!ok) goto cc_fail;
+
         print_str("Compiled: ");
         print_str(out_buf);
         print_str("\n");
         return 0;
     }
+
+cc_fail:
+    print_str("Error: no MIPS cross-compiler found\n");
+    print_str("  Install one of:\n");
+    print_str("    sudo apt install gcc-mips-linux-gnu\n");
+    print_str("    sudo apt install gcc-mipsel-linux-gnu\n");
+    print_str("  Or use Sage: sagemips emit <file.sage>\n");
+    return 1;
 #else
     (void)input; (void)save_asm;
     return 1;
